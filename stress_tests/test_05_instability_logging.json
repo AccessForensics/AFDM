@@ -1,0 +1,25 @@
+{
+  "flow_id": "test_05_instability_logging",
+  "case_label": "stress",
+  "start_url": "http://127.0.0.1:8080/stress_tests/html/test_05_instability.html",
+  "protocol_version": "SKU-A v3.5 (Hardened, Locked)",
+  "capture_mode": "passive",
+  "steps": [
+    {
+      "type": "wait_selector",
+      "selector": "#unstable",
+      "timeout_ms": 8000,
+      "allow_multiple_matches": true
+    },
+    {
+      "type": "scroll",
+      "deltaY": 200,
+      "delay_ms": 150
+    },
+    {
+      "type": "assert_text_present",
+      "text": "Instability Test",
+      "timeout_ms": 3000
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8"><title>Test 05 Instability</title></head>
+  <body>
+    <div>instability page</div>
+    <script>
+      let on = false;
+      setInterval(() => {
+        document.querySelectorAll(".dup").forEach(n => n.remove());
+        on = !on;
+        if (on) {
+          for (let i = 0; i < 12; i++) {
+            const d = document.createElement("div");
+            d.className = "dup";
+            d.textContent = "dup " + i;
+            document.body.appendChild(d);
+          }
+        }
+      }, 120);
+    </script>
+  </body>
+</html>
