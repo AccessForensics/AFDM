@@ -1,37 +1,17 @@
-# verify_test_07.ps1
-# PASS condition: find the most recent run whose run_metadata.flow_id == "test_07_goal_text_forbidden"
-# then assert status=error and error contains "goal_text"
+$ect  = Join-Path $PSScriptRoot "..\ect.js"
+$json = Join-Path $PSScriptRoot "test_07_goal_text_forbidden.json"
 
-$expectedFlowId = "test_07_goal_text_forbidden"
+# Run via cmd so PowerShell does not treat stderr as a terminating error
+$outLines = cmd /c "node ""$ect"" ""$json"" 2>&1"
+$out = ($outLines | Out-String)
 
-$runMetaFiles = Get-ChildItem .\runs -Directory | ForEach-Object {
-  $p = Join-Path $_.FullName "Deliverable_Packet\03_Verification\run_metadata.json"
-  if (Test-Path $p) { Get-Item $p }
-} | Sort-Object LastWriteTime -Descending
-
-$match = $null
-foreach ($f in $runMetaFiles) {
-  $m = Get-Content $f.FullName -Raw | ConvertFrom-Json
-  if ($m.flow_id -eq $expectedFlowId) { $match = @{ meta=$m; path=$f.FullName }; break }
-}
-
-if ($null -eq $match) {
-  Write-Host "`n? TEST 07 FAILED" -ForegroundColor Red
-  Write-Host "No run_metadata.json found for flow_id=$expectedFlowId" -ForegroundColor Yellow
-  exit 1
-}
-
-$meta = $match.meta
-
-if ($meta.status -eq "error" -and $meta.error -match "goal_text") {
+if ($out -match "goal_text is forbidden") {
   Write-Host "`n? TEST 07 PASSED" -ForegroundColor Green
-  Write-Host "Reason (from sealed metadata):" -ForegroundColor Cyan
-  Write-Host $meta.error
+  Write-Host "Reason (from executor output):" -ForegroundColor Cyan
+  Write-Host ($out.Trim())
   exit 0
 }
 
 Write-Host "`n? TEST 07 FAILED" -ForegroundColor Red
-Write-Host "Unexpected sealed status or error:" -ForegroundColor Yellow
-Write-Host ("status: " + $meta.status)
-Write-Host ("error: " + $meta.error)
+Write-Host ($out.Trim())
 exit 1
