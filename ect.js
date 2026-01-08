@@ -45,6 +45,7 @@
  *       GEN/*.png
  *     03_Verification/
  *       manifest.json
+ *       manifest_core.json
  *       packet_hash.txt
  *       run_metadata.json
  *       console.json
@@ -364,9 +365,7 @@ function renderExecutionReportTxt({
     process.exit(1);
   }
 
-  const captureMode = String(
-    flow.capture_mode || (flow.visual_only === true ? "passive" : "interactive")
-  ).toLowerCase();
+  const captureMode = String(flow.capture_mode || (flow.visual_only === true ? "passive" : "interactive")).toLowerCase();
 
   if (!["passive", "interactive"].includes(captureMode)) {
     console.error('FATAL: capture_mode must be "passive" or "interactive".');
@@ -378,9 +377,7 @@ function renderExecutionReportTxt({
     for (const s of flow.steps) {
       const t = String((s && s.type) || "");
       if (!PASSIVE_ALLOWED_STEPS.includes(t)) {
-        console.error(
-          `FATAL: Passive capture mode forbids step type "${t}". Allowed: ${PASSIVE_ALLOWED_STEPS.join(", ")}.`
-        );
+        console.error(`FATAL: Passive capture mode forbids step type "${t}". Allowed: ${PASSIVE_ALLOWED_STEPS.join(", ")}.`);
         process.exit(1);
       }
     }
@@ -391,9 +388,7 @@ function renderExecutionReportTxt({
     const hasInteraction = flow.steps.some((s) => INTERACTIVE_STEPS.includes(String((s && s.type) || "")));
     if (!hasInteraction) {
       console.error("FATAL: Quality Gate Failure. No interactive step types were detected in this flow plan.");
-      console.error(
-        '       Add at least one interactive step (click_selector, fill, press, tab), or use capture_mode: "passive".'
-      );
+      console.error('       Add at least one interactive step (click_selector, fill, press, tab), or use capture_mode: "passive".');
       process.exit(1);
     }
   }
@@ -469,8 +464,7 @@ function renderExecutionReportTxt({
     },
     stabilization: {
       window_ms: STABILIZE_MS,
-      policy:
-        "Log instability, decide on final count, do not fail solely due to change (except where stability is explicitly required).",
+      policy: "Log instability, decide on final count, do not fail solely due to change (except where stability is explicitly required).",
     },
     environment: {
       node_version: process.version,
@@ -496,21 +490,26 @@ function renderExecutionReportTxt({
     path.join(deliverableDir, "00_README.txt"),
     `EVIDENCE PACKET INSTRUCTIONS
 
-1. Integrity Verification
-   Calculate the SHA-256 hash of '03_Verification/manifest.json'.
+1. Integrity Verification (Non-circular)
+   Calculate the SHA-256 hash of '03_Verification/manifest_core.json'.
    Compare it to the content of '03_Verification/packet_hash.txt'.
    They must match exactly.
 
-2. Contents
+2. Inventory
+   - manifest_core.json inventories packet contents excluding sealing artifacts.
+   - packet_hash.txt is the SHA-256 of manifest_core.json bytes.
+   - manifest.json inventories the packet including packet_hash.txt and manifest_core.json, and excludes manifest.json itself.
+
+3. Contents
    01_Report: Factual execution report and logs.
    02_Exhibits: Screenshots grouped by allegation folder.
-   03_Verification: Cryptographic sealing data (manifest + packet hash + status banner).
+   03_Verification: Cryptographic sealing data (manifests + packet hash + status banner).
 
-3. Native Artifacts
+4. Native Artifacts
    Native forensic files (HAR, Trace, Video, HTML, AX) are preserved separately in the '_raw' archive
    for ${RAW_RETENTION_DAYS} days. Release requires a separate engagement.
 
-4. Status Banner
+5. Status Banner
    '03_Verification/STATUS.txt' is informational and is not required for hash verification.
 `,
     "utf-8"
@@ -742,9 +741,7 @@ function renderExecutionReportTxt({
     const aidRaw = canonicalAllegationId(s && s.allegation_id);
 
     if (s && typeof s.allow_multiple_matches !== "undefined" && t !== "wait_selector") {
-      hardFailPolicy(
-        `Policy Violation: allow_multiple_matches is only permitted for wait_selector. Found on step type "${t}".`
-      );
+      hardFailPolicy(`Policy Violation: allow_multiple_matches is only permitted for wait_selector. Found on step type "${t}".`);
     }
 
     if (s && typeof s.goal_text !== "undefined" && s.goal_text !== null) {
@@ -959,13 +956,10 @@ function renderExecutionReportTxt({
           throw new Error(`Goal Failed: Selector "${goalSelector}" matched ${finalCount} elements (ambiguity).`);
         }
 
-        const goalMet =
-          (expectation === "present" && finalCount === 1) || (expectation === "absent" && finalCount === 0);
+        const goalMet = (expectation === "present" && finalCount === 1) || (expectation === "absent" && finalCount === 0);
 
         if (!goalMet) {
-          throw new Error(
-            `Goal Failed: Selector "${goalSelector}" did not match expectation "${expectation}" (Final Count: ${finalCount})`
-          );
+          throw new Error(`Goal Failed: Selector "${goalSelector}" did not match expectation "${expectation}" (Final Count: ${finalCount})`);
         }
       } catch (e) {
         goalErr = e;
@@ -1055,7 +1049,7 @@ function renderExecutionReportTxt({
       runMetadata.error ? `ERROR: ${runMetadata.error}` : "ERROR: (none)",
       "",
       "NOTE: This file is informational and is not required for integrity verification.",
-      "Integrity verification is performed using manifest.json and packet_hash.txt only.",
+      "Integrity verification is performed using manifest_core.json and packet_hash.txt only.",
       "",
     ].join("\n");
 
@@ -1085,29 +1079,52 @@ function renderExecutionReportTxt({
     });
     fs.writeFileSync(path.join(reportDir, "Execution_Report.txt"), reportTxt, "utf-8");
 
-    // Seal packet
-    const manifest = { run_id: runId, created_at_utc: nowIso(), files: [] };
+    // Seal packet (two-manifest, non-circular)
+    // - manifest_core.json: inventory excluding sealing artifacts
+    // - packet_hash.txt: SHA-256(manifest_core.json bytes)
+    // - manifest.json: full inventory including packet_hash.txt and manifest_core.json, excludes manifest.json itself
 
-    function walk(dirAbs, rootAbs) {
+    function walkWithSkips(dirAbs, rootAbs, skipRelSet, outFiles) {
       const entries = fs.readdirSync(dirAbs, { withFileTypes: true });
       for (const ent of entries) {
         const abs = path.join(dirAbs, ent.name);
-        if (ent.isDirectory()) walk(abs, rootAbs);
-        else if (ent.isFile()) {
+        if (ent.isDirectory()) {
+          walkWithSkips(abs, rootAbs, skipRelSet, outFiles);
+        } else if (ent.isFile()) {
           const rel = path.relative(rootAbs, abs).replace(/\\/g, "/");
-          manifest.files.push({ path: rel, sha256: sha256File(abs), size_bytes: statSize(abs) });
+          if (skipRelSet.has(rel)) continue;
+          outFiles.push({ path: rel, sha256: sha256File(abs), size_bytes: statSize(abs) });
         }
       }
     }
 
-    walk(deliverableDir, deliverableDir);
+    const relManifest = "03_Verification/manifest.json";
+    const relManifestCore = "03_Verification/manifest_core.json";
+    const relPacketHash = "03_Verification/packet_hash.txt";
+
+    // 1) manifest_core.json (exclude sealing artifacts)
+    const core = { run_id: runId, created_at_utc: nowIso(), files: [] };
+    const coreSkips = new Set([relManifest, relManifestCore, relPacketHash]);
+
+    walkWithSkips(deliverableDir, deliverableDir, coreSkips, core.files);
+    core.files.sort((a, b) => a.path.localeCompare(b.path));
+
+    const coreStr = stableStringify(core, 2);
+    fs.writeFileSync(path.join(verificationDir, "manifest_core.json"), coreStr, "utf-8");
+
+    // 2) packet_hash.txt = SHA-256(manifest_core.json bytes)
+    const packetHash = sha256Bytes(Buffer.from(coreStr, "utf-8"));
+    fs.writeFileSync(path.join(verificationDir, "packet_hash.txt"), packetHash + "\n", "utf-8");
+
+    // 3) manifest.json (full inventory, includes packet_hash + manifest_core, excludes manifest.json itself)
+    const manifest = { run_id: runId, created_at_utc: nowIso(), files: [] };
+    const fullSkips = new Set([relManifest]);
+
+    walkWithSkips(deliverableDir, deliverableDir, fullSkips, manifest.files);
     manifest.files.sort((a, b) => a.path.localeCompare(b.path));
 
     const manifestStr = stableStringify(manifest, 2);
     fs.writeFileSync(path.join(verificationDir, "manifest.json"), manifestStr, "utf-8");
-
-    const packetHash = sha256Bytes(Buffer.from(manifestStr, "utf-8"));
-    fs.writeFileSync(path.join(verificationDir, "packet_hash.txt"), packetHash + "\n", "utf-8");
 
     console.log(`RUN COMPLETE: ${String(runStatus).toUpperCase()}`);
     console.log(`Deliverable: ${deliverableDir}`);
