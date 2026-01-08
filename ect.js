@@ -2,80 +2,49 @@
  * ect.js
  * Access Forensics Executor (Hardened Golden Master, Locked Policy)
  *
- * PROTOCOL:
- * 1. Executes flows mechanically (no human variation).
- * 2. Enforces RETAIN_RAW operational policy (archives native proof).
- * 3. Produces a Sealed Packet deliverable for attorneys (clean, flat).
- * 4. Generates a narrative Execution Report grouped by Allegation.
- * 5. Redacts banned inference language from notes, logs redaction events.
- * 6. Halts immediately on any step error or goal failure (no contradictory "success").
- * 7. HARDENING: Blocks passive-only flows (quality gate) unless passive capture mode is selected.
- * 8. HARDENING: Enforces stabilized strict selector ambiguity checks (0 or >1 fails).
+ * FINAL LOCKED CONTRACT (DO NOT DRIFT)
  *
- * LOCKED POLICY DECISIONS:
- * A) wait_selector enforces strict ambiguity by default, optional allow_multiple_matches ONLY for wait_selector.
- * B) Any misuse of allow_multiple_matches outside wait_selector is a HARD FAIL (halts run).
- * C) Stabilization: log instability but decide based on final count, do not fail on instability itself (except where explicitly required).
- * D) wait_selector with allow_multiple_matches:true succeeds only if:
- *    - attached count >= 1, and
- *    - count is stable over stabilization window, and
- *    - at least one match is visible (best effort, bounded checks).
- * E) goal evidence naming: filesystem step index remains numeric, interaction_log uses "GOAL".
- * F) goal_selector remains strict (present means exactly 1 match, absent means 0), no goal_text in this version.
- *    If goal_text is provided anywhere (flow or step), the run HARD FAILS (explicitly forbidden).
- * G) Always seal packet (success or error). Additionally emit 03_Verification/STATUS.txt banner.
+ * 1) Error Classification, at the source
+ * - SelectorAmbiguity is stamped mechanically at the moment the executor observes count > 1 where strict-single is required.
+ * - No regex parsing of error messages.
  *
- * CAPTURE MODE POLICY:
- * - capture_mode: "passive" or "interactive"
- * - Backward compatibility: if capture_mode not provided, visual_only:true maps to passive, else interactive.
- * - Passive mode forbids state changing steps (click, type, press, tab). Allowed: wait_selector, scroll, assert_text_present, assert_url_contains.
+ * 2) STATUS.txt is self-contained
+ * - Always includes: ERROR TYPE: <ErrorName or (none)>
  *
- * OUTPUT STRUCTURE:
- * runs/<run_id>/
- *   Deliverable_Packet/          (Client-Ready)
- *     00_README.txt
- *     01_Report/
- *       Execution_Report.txt
- *       evidence_index.json
- *       interaction_log.json
- *       policy_overrides.json
- *       flow_plan.sealed.json
- *     02_Exhibits/
- *       <ALLEGATION_ID_FOLDER>/*.png
- *       GEN/*.png
- *     03_Verification/
- *       manifest.json
- *       manifest_core.json
- *       packet_hash.txt
- *       run_metadata.json
- *       console.json
- *       STATUS.txt
- *   _raw/                        (Archived/Hidden)
- *     network.har
- *     trace.zip
- *     video.webm
- *     screenshots/html/*.html
- *     screenshots/ax/*.json
+ * 3) Step Indexing Contract (permanent)
+ * - Step 001 is ALWAYS Navigation (provenance load).
+ * - Plan steps execute as Step 002+.
+ * - Execution index is the source of truth, plan indices are recorded as plan_step_index for mapping.
+ *
+ * PROTOCOL
+ * - Mechanical execution, no analysis.
+ * - Strict selector ambiguity (0 or >1 hard fail) unless wait_selector allow_multiple_matches:true.
+ * - wait_selector allow_multiple_matches:true requires: attached >= 1, stable count over stabilization window, at least one visible match.
+ * - Passive capture mode forbids state-changing steps.
+ * - Always seals packet (success or error).
+ * - goal_text is forbidden (flow or steps), hard fail.
  */
+
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
+const { pathToFileURL } = require("url");
 const { chromium } = require("playwright");
 
 /* =========================
    CONFIG & POLICIES
    ========================= */
 
-const RETAIN_RAW = true;
+const RETAIN_RAW = process.env.ECT_RETAIN_RAW === "1";
+const ECT_MODE = process.env.ECT_MODE || "default";
 const RAW_RETENTION_DAYS = 180;
 
 const VIEWPORT = { width: 1366, height: 768 };
 const NAV_TIMEOUT_MS = 30000;
 const STEP_TIMEOUT_MS = 10000;
-
 const STABILIZE_MS = 150;
 
 const NOTE_BANNED_PATTERNS = [
@@ -92,10 +61,7 @@ const NOTE_BANNED_PATTERNS = [
   /\bpass(ed|es)?\b/gi,
 ];
 
-// Interactive step types (used for interactive-mode quality gate)
 const INTERACTIVE_STEPS = ["click_selector", "type_selector", "fill", "press", "tab"];
-
-// Passive capture allowed step types only
 const PASSIVE_ALLOWED_STEPS = ["wait_selector", "scroll", "assert_text_present", "assert_url_contains"];
 
 /* =========================
@@ -120,11 +86,6 @@ function safeToken(s) {
   return t || "gen";
 }
 
-/**
- * Canonical folder mapping:
- * - General bucket must be "GEN" (uppercase) everywhere.
- * - All other allegation folders are safeToken(raw).
- */
 function canonicalFolderForAllegation(rawId) {
   const raw = String(rawId || "").trim();
   if (!raw) return "GEN";
@@ -132,11 +93,6 @@ function canonicalFolderForAllegation(rawId) {
   return safeToken(raw);
 }
 
-/**
- * Canonical allegation id for logs/reports:
- * - Preserve original raw id, except normalize empty to "GEN"
- * - Normalize any case of "gen" to "GEN" to prevent split buckets
- */
 function canonicalAllegationId(rawId) {
   const raw = String(rawId || "").trim();
   if (!raw) return "GEN";
@@ -153,8 +109,7 @@ function writeJson(p, obj) {
 }
 
 function readJsonStripBom(filePath) {
-  const abs = filePath;
-  const buf = fs.readFileSync(abs);
+  const buf = fs.readFileSync(filePath);
   const hasUtf8Bom = buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf;
   const text = (hasUtf8Bom ? buf.slice(3) : buf).toString("utf8");
   return JSON.parse(text);
@@ -191,6 +146,29 @@ function stableStringify(value, indent = 2) {
   return JSON.stringify(sorter(value), null, indent) + "\n";
 }
 
+function normalizeStartUrl(input) {
+  const s = String(input || "").trim();
+  if (!s) return s;
+
+  if (/^https?:\/\//i.test(s)) return s;
+  if (/^file:\/\/\//i.test(s)) return s;
+
+  const projectRoot = path.resolve(__dirname);
+
+  if (/^file:/i.test(s)) {
+    const rest = s.replace(/^file:\/*/i, "");
+    const rel = rest.replace(/^\/+/, "");
+    const abs = path.resolve(projectRoot, rel);
+    return pathToFileURL(abs).href;
+  }
+
+  if (/^[a-zA-Z]:[\\/]/.test(s)) {
+    return pathToFileURL(s).href;
+  }
+
+  return s;
+}
+
 /* =========================
    REDACTION & REPORT
    ========================= */
@@ -221,14 +199,7 @@ function sanitizeNote(note, consoleLog) {
   return s;
 }
 
-function renderExecutionReportTxt({
-  protocolVersion,
-  runId,
-  flow,
-  runMetadata,
-  interactionLog,
-  evidenceIndex,
-}) {
+function renderExecutionReportTxt({ protocolVersion, runId, flow, runMetadata, interactionLog, evidenceIndex }) {
   const lines = [];
   const status = runMetadata.status === "success" ? "SUCCESS" : "INCOMPLETE/ERROR";
 
@@ -264,11 +235,15 @@ function renderExecutionReportTxt({
   lines.push(`Run ID:\t${runId}`);
   lines.push(`Flow ID:\t${flow.flow_id || ""}`);
   lines.push(`Target URL:\t${flow.start_url || ""}`);
+  if (runMetadata.start_url_resolved) lines.push(`Resolved URL:\t${runMetadata.start_url_resolved}`);
   lines.push(`Capture Mode:\t${String(runMetadata.capture_mode || "").toUpperCase()}`);
+  lines.push(`Raw Retention:\t${RETAIN_RAW ? "ENABLED" : "DISABLED"}`);
+  lines.push(`ECT Mode:\t${String(runMetadata.ect_mode || "").toUpperCase()}`);
   lines.push(`Start Time (UTC):\t${runMetadata.started_at_utc}`);
   lines.push(`End Time (UTC):\t${runMetadata.finished_at_utc}`);
   lines.push(`Final Status:\t${status}`);
   if (runMetadata.error) lines.push(`Error Detail:\t${runMetadata.error}`);
+  if (runMetadata.error_type) lines.push(`Error Type:\t${runMetadata.error_type}`);
   lines.push("");
 
   lines.push("1.1 Policy Overrides");
@@ -285,7 +260,7 @@ function renderExecutionReportTxt({
   lines.push("");
 
   lines.push("2.0 Record of Steps (Grouped by Allegation)");
-  lines.push("Each entry records the action taken and the observable outcome.");
+  lines.push("Index Contract: Step 001 is Navigation. Plan steps begin at Step 002.");
   lines.push("");
 
   for (const aid of ordered) {
@@ -298,15 +273,15 @@ function renderExecutionReportTxt({
 
     for (const e of entries) {
       const idx = typeof e.step_index === "number" ? pad3(e.step_index) : String(e.step_index);
+      const plan = typeof e.plan_step_index === "number" ? ` | Plan: ${pad3(e.plan_step_index)}` : "";
       const note = e.note ? ` | Note: ${e.note}` : "";
       const err = e.error_message ? ` | Error: ${e.error_message}` : "";
-      lines.push(`[${idx}] Action: ${e.action} | Result: ${e.result}${note}${err}`);
+      lines.push(`[${idx}] Action: ${e.action} | Result: ${e.result}${plan}${note}${err}`);
     }
     lines.push("");
   }
 
   lines.push("3.0 Exhibit Inventory");
-  lines.push("Screenshots were captured as part of the execution record. Exhibits are grouped by allegation folder.");
   lines.push("");
 
   for (const ev of evidenceIndex) {
@@ -337,8 +312,9 @@ function renderExecutionReportTxt({
   let flow;
   try {
     flow = readJsonStripBom(flowPath);
-  } catch (_) {
+  } catch (e) {
     console.error("FATAL: Invalid flow JSON.");
+    console.error(e.message);
     process.exit(1);
   }
 
@@ -359,41 +335,40 @@ function renderExecutionReportTxt({
     process.exit(1);
   }
 
-  // HARD FAIL if goal_text is present anywhere (flow-level)
   if (typeof flow.goal_text !== "undefined" && flow.goal_text !== null) {
     console.error("FATAL: goal_text is forbidden in this protocol version. Remove goal_text from the flow plan.");
     process.exit(1);
   }
 
   const captureMode = String(flow.capture_mode || (flow.visual_only === true ? "passive" : "interactive")).toLowerCase();
-
   if (!["passive", "interactive"].includes(captureMode)) {
     console.error('FATAL: capture_mode must be "passive" or "interactive".');
     process.exit(1);
   }
 
-  // PASSIVE mode validation, block interactive steps at load-time
   if (captureMode === "passive") {
     for (const s of flow.steps) {
       const t = String((s && s.type) || "");
       if (!PASSIVE_ALLOWED_STEPS.includes(t)) {
-        console.error(`FATAL: Passive capture mode forbids step type "${t}". Allowed: ${PASSIVE_ALLOWED_STEPS.join(", ")}.`);
+        console.error(
+          `FATAL: Passive capture mode forbids step type "${t}". Allowed: ${PASSIVE_ALLOWED_STEPS.join(", ")}.`
+        );
         process.exit(1);
       }
     }
   }
 
-  // INTERACTIVE mode quality gate
   if (captureMode === "interactive") {
     const hasInteraction = flow.steps.some((s) => INTERACTIVE_STEPS.includes(String((s && s.type) || "")));
     if (!hasInteraction) {
       console.error("FATAL: Quality Gate Failure. No interactive step types were detected in this flow plan.");
-      console.error('       Add at least one interactive step (click_selector, fill, press, tab), or use capture_mode: "passive".');
+      console.error('Add at least one interactive step (click_selector, fill, press, tab), or use capture_mode: "passive".');
       process.exit(1);
     }
   }
 
-  const protocolVersion = String(flow.protocol_version || "SKU-A v3.5 (Hardened, Locked)");
+  const protocolVersion = String(flow.protocol_version || "SKU-A v3.6 (Hardened, Locked)");
+  const startUrlResolved = normalizeStartUrl(flow.start_url);
 
   const timestamp = new Date().toISOString().replace(/[-:.]/g, "");
   const runId = `${timestamp}_${safeToken(flow.case_label || "case")}_${safeToken(flow.flow_id)}`;
@@ -411,19 +386,9 @@ function renderExecutionReportTxt({
   const rawAxDir = path.join(rawScreenshotsDir, "ax");
   const rawVideoTempDir = path.join(rawDir, "video_temp");
 
-  [
-    runDir,
-    deliverableDir,
-    reportDir,
-    exhibitsDir,
-    verificationDir,
-    rawDir,
-    rawScreenshotsDir,
-    rawHtmlDir,
-    rawAxDir,
-  ].forEach(ensureDir);
+  [runDir, deliverableDir, reportDir, exhibitsDir, verificationDir].forEach(ensureDir);
+  if (RETAIN_RAW) [rawDir, rawScreenshotsDir, rawHtmlDir, rawAxDir].forEach(ensureDir);
 
-  // Exhibit buckets
   const allegations = Array.isArray(flow.allegations) ? flow.allegations : [];
   for (const a of allegations) {
     if (a && a.id) ensureDir(path.join(exhibitsDir, canonicalFolderForAllegation(a.id)));
@@ -437,6 +402,7 @@ function renderExecutionReportTxt({
   let stepIndex = 0;
   let runStatus = "running";
   let runError = null;
+  let runErrorType = null;
 
   let playwrightVersion = "unknown";
   try {
@@ -448,23 +414,29 @@ function renderExecutionReportTxt({
     protocol_version: protocolVersion,
     flow_id: flow.flow_id,
     start_url: flow.start_url,
+    start_url_resolved: startUrlResolved,
     goal_selector: flow.goal_selector ? String(flow.goal_selector) : null,
     goal_expectation: flow.goal_expectation ? String(flow.goal_expectation) : null,
     capture_mode: captureMode,
+    retain_raw: RETAIN_RAW,
+    ect_mode: ECT_MODE,
     started_at_utc: nowIso(),
     finished_at_utc: null,
     status: "running",
     error: null,
-    retain_raw_policy: RETAIN_RAW,
-    raw_retention_days: RAW_RETENTION_DAYS,
-    quality_gate: {
-      capture_mode: captureMode,
-      passive_allowed_steps: PASSIVE_ALLOWED_STEPS.slice(),
-      interactive_steps: INTERACTIVE_STEPS.slice(),
+    error_type: null,
+    raw_retention_days: RETAIN_RAW ? RAW_RETENTION_DAYS : 0,
+    contracts: {
+      step_001_is_navigation: true,
+      execution_index_is_source_of_truth: true,
+      plan_steps_begin_at_002: true,
+      selector_ambiguity_classified_at_source: true,
+      status_includes_error_type: true,
     },
     stabilization: {
       window_ms: STABILIZE_MS,
-      policy: "Log instability, decide on final count, do not fail solely due to change (except where stability is explicitly required).",
+      policy:
+        "Log instability. Strict single requires final count === 1. wait_selector allow_multiple requires stable count, else hard fail.",
     },
     environment: {
       node_version: process.version,
@@ -481,35 +453,35 @@ function renderExecutionReportTxt({
 
   writeJson(path.join(verificationDir, "run_metadata.json"), runMetadata);
 
-  // Seal the exact flow plan into the deliverable packet
   try {
     fs.writeFileSync(path.join(reportDir, "flow_plan.sealed.json"), stableStringify(flow, 2), "utf-8");
   } catch (_) {}
+
+  const retentionNote = RETAIN_RAW
+    ? `Native forensic files (HAR, Trace, Video, HTML, AX) are preserved separately in the '_raw' archive for ${RAW_RETENTION_DAYS} days.`
+    : "Raw native artifacts (HAR, Trace, Video) were NOT retained for this run (ECT_RETAIN_RAW != 1).";
 
   fs.writeFileSync(
     path.join(deliverableDir, "00_README.txt"),
     `EVIDENCE PACKET INSTRUCTIONS
 
-1. Integrity Verification (Non-circular)
+1. Integrity Verification
    Calculate the SHA-256 hash of '03_Verification/manifest_core.json'.
-   Compare it to the content of '03_Verification/packet_hash.txt'.
+   Compare it to '03_Verification/packet_hash.txt'.
    They must match exactly.
 
-2. Inventory
-   - manifest_core.json inventories packet contents excluding sealing artifacts.
-   - packet_hash.txt is the SHA-256 of manifest_core.json bytes.
-   - manifest.json inventories the packet including packet_hash.txt and manifest_core.json, and excludes manifest.json itself.
+   NOTE: '03_Verification/manifest.json' is the full inventory including sealing artifacts.
+   It is not used for the packet_hash computation to avoid circular hashing.
 
-3. Contents
+2. Contents
    01_Report: Factual execution report and logs.
    02_Exhibits: Screenshots grouped by allegation folder.
-   03_Verification: Cryptographic sealing data (manifests + packet hash + status banner).
+   03_Verification: Cryptographic sealing data (manifest + manifest_core + packet hash + status banner).
 
-4. Native Artifacts
-   Native forensic files (HAR, Trace, Video, HTML, AX) are preserved separately in the '_raw' archive
-   for ${RAW_RETENTION_DAYS} days. Release requires a separate engagement.
+3. Native Artifacts
+   ${retentionNote}
 
-5. Status Banner
+4. Status Banner
    '03_Verification/STATUS.txt' is informational and is not required for hash verification.
 `,
     "utf-8"
@@ -617,6 +589,7 @@ function renderExecutionReportTxt({
 
       interactionLog.push({
         step_index: stepIndex,
+        plan_step_index: typeof contextObj?.plan_step_index === "number" ? contextObj.plan_step_index : null,
         allegation_id: canonicalAllegationId(contextObj && contextObj.allegation_id),
         action: "instability_log",
         result: "info",
@@ -639,11 +612,15 @@ function renderExecutionReportTxt({
     if (c === 0) {
       throw new Error(`Selector "${selector}" not found (0 matches).`);
     }
+
     if (c > 1) {
-      throw new Error(
+      const err = new Error(
         `Ambiguity Error: Selector "${selector}" matched ${c} elements (final count). Execution halted to prevent arbitrary interaction.`
       );
+      err.name = "SelectorAmbiguity";
+      throw err;
     }
+
     return sample.locator.first();
   }
 
@@ -687,6 +664,7 @@ function renderExecutionReportTxt({
       type: "policy_override",
       override_type: "wait_selector_allow_multiple_matches",
       step_index: stepIndex,
+      plan_step_index: typeof contextObj?.plan_step_index === "number" ? contextObj.plan_step_index : null,
       allegation_id: canonicalAllegationId(contextObj && contextObj.allegation_id),
       selector: String(selector),
       observed_count: cFinal,
@@ -695,6 +673,7 @@ function renderExecutionReportTxt({
 
     interactionLog.push({
       step_index: stepIndex,
+      plan_step_index: typeof contextObj?.plan_step_index === "number" ? contextObj.plan_step_index : null,
       allegation_id: canonicalAllegationId(contextObj && contextObj.allegation_id),
       action: "policy_override",
       result: "info",
@@ -733,7 +712,7 @@ function renderExecutionReportTxt({
     } catch (_) {}
   }
 
-  async function executeStep(s) {
+  async function executeStep(s, planStepIndex) {
     const t = String((s && s.type) || "");
     const sel = s && s.selector ? String(s.selector) : null;
     const timeout = Number((s && s.timeout_ms) || STEP_TIMEOUT_MS);
@@ -748,20 +727,22 @@ function renderExecutionReportTxt({
       hardFailPolicy("Policy Violation: goal_text is forbidden in this protocol version. Remove goal_text from steps.");
     }
 
+    const ctx = { allegation_id: aidRaw, plan_step_index: planStepIndex };
+
     if (t === "wait_selector") {
       const allowMulti = s && s.allow_multiple_matches === true;
-      await waitSelector(sel, timeout, allowMulti, { allegation_id: aidRaw });
+      await waitSelector(sel, timeout, allowMulti, ctx);
       return;
     }
 
     if (t === "click_selector") {
-      const loc = await strictSingle(sel, timeout, { allegation_id: aidRaw });
+      const loc = await strictSingle(sel, timeout, ctx);
       await loc.click({ timeout });
       return;
     }
 
     if (t === "type_selector" || t === "fill") {
-      const loc = await strictSingle(sel, timeout, { allegation_id: aidRaw });
+      const loc = await strictSingle(sel, timeout, ctx);
       const val = String((s && (s.text ?? s.value)) ?? "");
       await loc.fill(val, { timeout });
       return;
@@ -840,14 +821,14 @@ function renderExecutionReportTxt({
       consoleLog.push({ timestamp_utc: nowIso(), type: "pageerror", message: String(err) });
     });
 
-    // Step 001: initial navigation
+    /* Step 001: Navigation, permanent contract */
     stepIndex = 1;
 
-    // URL provenance, declared start URL (plan intent)
     interactionLog.push({
       step_index: stepIndex,
+      plan_step_index: null,
       allegation_id: "GEN",
-      action: "provenance_start_url",
+      action: "navigation",
       result: "info",
       error_message: null,
       note: `Declared start_url: ${flow.start_url}`,
@@ -855,27 +836,27 @@ function renderExecutionReportTxt({
       timestamp_utc: nowIso(),
     });
 
-    // Backward compatible navigation record
     interactionLog.push({
       step_index: stepIndex,
+      plan_step_index: null,
       allegation_id: "GEN",
-      action: "goto",
+      action: "navigation_resolved",
       result: "info",
       error_message: null,
-      note: "Declared start_url (flow.start_url).",
-      url: flow.start_url,
+      note: `Resolved start_url: ${startUrlResolved}`,
+      url: startUrlResolved,
       timestamp_utc: nowIso(),
     });
 
-    await page.goto(flow.start_url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+    await page.goto(startUrlResolved, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
 
     await captureEvidence("Initial Load", "GEN");
 
-    // URL provenance, final resolved URL (browser observed)
     interactionLog.push({
       step_index: stepIndex,
+      plan_step_index: null,
       allegation_id: "GEN",
-      action: "provenance_final_url",
+      action: "navigation_final_url",
       result: "success",
       error_message: null,
       note: `Final URL after navigation: ${page.url()}`,
@@ -883,20 +864,11 @@ function renderExecutionReportTxt({
       timestamp_utc: nowIso(),
     });
 
-    // Backward compatible navigation record
-    interactionLog.push({
-      step_index: stepIndex,
-      allegation_id: "GEN",
-      action: "goto",
-      result: "success",
-      error_message: null,
-      note: "Final URL after navigation (page.url()).",
-      url: page.url(),
-      timestamp_utc: nowIso(),
-    });
+    /* Plan steps begin at Step 002 */
+    for (let i = 0; i < flow.steps.length; i++) {
+      const s = flow.steps[i];
+      const planStepIndex = i + 1;
 
-    // Execute plan steps
-    for (const s of flow.steps) {
       stepIndex += 1;
 
       const aidRaw = canonicalAllegationId(s && s.allegation_id);
@@ -904,7 +876,7 @@ function renderExecutionReportTxt({
 
       let stepErr = null;
       try {
-        await executeStep(s);
+        await executeStep(s, planStepIndex);
       } catch (e) {
         stepErr = e;
       }
@@ -913,6 +885,7 @@ function renderExecutionReportTxt({
 
       interactionLog.push({
         step_index: stepIndex,
+        plan_step_index: planStepIndex,
         allegation_id: aidRaw,
         action: String((s && s.type) || ""),
         result: stepErr ? "error" : "success",
@@ -924,15 +897,18 @@ function renderExecutionReportTxt({
 
       if (stepErr) {
         runStatus = "error";
-        runError = `Failed at step ${stepIndex}: ${stepErr.message || String(stepErr)}`;
-        throw new Error(runError);
+        runErrorType = stepErr.name || "Error";
+        runError = `Failed at step ${pad3(stepIndex)}: ${stepErr.message || String(stepErr)}`;
+        const wrap = new Error(runError);
+        wrap.name = runErrorType;
+        throw wrap;
       }
     }
 
-    // Goal verification (optional, strict if present)
+    /* Optional goal check */
     if (flow.goal_selector) {
       if (typeof flow.goal_text !== "undefined" && flow.goal_text !== null) {
-        throw new Error("Policy Violation: goal_text is forbidden in this protocol version.");
+        hardFailPolicy("Policy Violation: goal_text is forbidden in this protocol version.");
       }
 
       stepIndex += 1;
@@ -940,26 +916,27 @@ function renderExecutionReportTxt({
       const goalSelector = String(flow.goal_selector);
       const expectation = String(flow.goal_expectation || "present").toLowerCase();
       const goalLabel = flow.goal ? String(flow.goal) : "Goal Verification";
+      const goalTimeout = Number(flow.goal_timeout_ms || STEP_TIMEOUT_MS);
 
       let goalErr = null;
-      let finalCount = 0;
 
       try {
-        const sample = await stabilizedCount(
-          goalSelector,
-          Number(flow.goal_timeout_ms || STEP_TIMEOUT_MS),
-          { allegation_id: "GEN" }
-        );
-        finalCount = sample.final;
+        const sample = await stabilizedCount(goalSelector, goalTimeout, { allegation_id: "GEN", plan_step_index: null });
+        const finalCount = sample.final;
 
         if (finalCount > 1) {
-          throw new Error(`Goal Failed: Selector "${goalSelector}" matched ${finalCount} elements (ambiguity).`);
+          const err = new Error(`Goal Failed: Selector "${goalSelector}" matched ${finalCount} elements (ambiguity).`);
+          err.name = "SelectorAmbiguity";
+          throw err;
         }
 
-        const goalMet = (expectation === "present" && finalCount === 1) || (expectation === "absent" && finalCount === 0);
+        const goalMet =
+          (expectation === "present" && finalCount === 1) || (expectation === "absent" && finalCount === 0);
 
         if (!goalMet) {
-          throw new Error(`Goal Failed: Selector "${goalSelector}" did not match expectation "${expectation}" (Final Count: ${finalCount})`);
+          throw new Error(
+            `Goal Failed: Selector "${goalSelector}" did not match expectation "${expectation}" (Final Count: ${finalCount})`
+          );
         }
       } catch (e) {
         goalErr = e;
@@ -969,6 +946,7 @@ function renderExecutionReportTxt({
 
       interactionLog.push({
         step_index: "GOAL",
+        plan_step_index: null,
         allegation_id: "GEN",
         action: "verify_goal",
         result: goalErr ? "error" : "success",
@@ -980,8 +958,11 @@ function renderExecutionReportTxt({
 
       if (goalErr) {
         runStatus = "error";
-        runError = goalErr.message || String(goalErr);
-        throw new Error(runError);
+        runErrorType = goalErr.name || "Error";
+        runError = `Failed at GOAL: ${goalErr.message || String(goalErr)}`;
+        const wrap = new Error(runError);
+        wrap.name = runErrorType;
+        throw wrap;
       }
     }
 
@@ -989,10 +970,12 @@ function renderExecutionReportTxt({
   } catch (e) {
     runStatus = "error";
     runError = e && e.message ? e.message : String(e);
+    runErrorType = runErrorType || (e && e.name ? e.name : "Error");
   } finally {
     runMetadata.finished_at_utc = nowIso();
     runMetadata.status = runStatus;
     runMetadata.error = runError || null;
+    runMetadata.error_type = runErrorType || null;
 
     if (context && RETAIN_RAW) {
       try {
@@ -1012,7 +995,6 @@ function renderExecutionReportTxt({
       } catch (_) {}
     }
 
-    // Normalize video
     if (RETAIN_RAW) {
       try {
         if (fs.existsSync(rawVideoTempDir)) {
@@ -1039,7 +1021,6 @@ function renderExecutionReportTxt({
       }
     }
 
-    // STATUS banner (informational)
     const statusBanner = [
       `RUN STATUS: ${String(runStatus).toUpperCase()}`,
       `CAPTURE MODE: ${String(captureMode).toUpperCase()}`,
@@ -1047,6 +1028,7 @@ function renderExecutionReportTxt({
       `START (UTC): ${runMetadata.started_at_utc}`,
       `END (UTC): ${runMetadata.finished_at_utc}`,
       runMetadata.error ? `ERROR: ${runMetadata.error}` : "ERROR: (none)",
+      runMetadata.error_type ? `ERROR TYPE: ${runMetadata.error_type}` : "ERROR TYPE: (none)",
       "",
       "NOTE: This file is informational and is not required for integrity verification.",
       "Integrity verification is performed using manifest_core.json and packet_hash.txt only.",
@@ -1057,18 +1039,15 @@ function renderExecutionReportTxt({
       fs.writeFileSync(path.join(verificationDir, "STATUS.txt"), statusBanner, "utf-8");
     } catch (_) {}
 
-    // Write logs
     writeJson(path.join(reportDir, "interaction_log.json"), interactionLog);
     writeJson(path.join(reportDir, "evidence_index.json"), evidenceIndex);
 
-    // policy_overrides.json in 01_Report
     const policyOverrides = interactionLog.filter((e) => e && e.action === "policy_override");
     writeJson(path.join(reportDir, "policy_overrides.json"), policyOverrides);
 
     writeJson(path.join(verificationDir, "console.json"), consoleLog);
     writeJson(path.join(verificationDir, "run_metadata.json"), runMetadata);
 
-    // Narrative report
     const reportTxt = renderExecutionReportTxt({
       protocolVersion,
       runId,
@@ -1078,11 +1057,6 @@ function renderExecutionReportTxt({
       evidenceIndex,
     });
     fs.writeFileSync(path.join(reportDir, "Execution_Report.txt"), reportTxt, "utf-8");
-
-    // Seal packet (two-manifest, non-circular)
-    // - manifest_core.json: inventory excluding sealing artifacts
-    // - packet_hash.txt: SHA-256(manifest_core.json bytes)
-    // - manifest.json: full inventory including packet_hash.txt and manifest_core.json, excludes manifest.json itself
 
     function walkWithSkips(dirAbs, rootAbs, skipRelSet, outFiles) {
       const entries = fs.readdirSync(dirAbs, { withFileTypes: true });
@@ -1102,7 +1076,6 @@ function renderExecutionReportTxt({
     const relManifestCore = "03_Verification/manifest_core.json";
     const relPacketHash = "03_Verification/packet_hash.txt";
 
-    // 1) manifest_core.json (exclude sealing artifacts)
     const core = { run_id: runId, created_at_utc: nowIso(), files: [] };
     const coreSkips = new Set([relManifest, relManifestCore, relPacketHash]);
 
@@ -1112,11 +1085,9 @@ function renderExecutionReportTxt({
     const coreStr = stableStringify(core, 2);
     fs.writeFileSync(path.join(verificationDir, "manifest_core.json"), coreStr, "utf-8");
 
-    // 2) packet_hash.txt = SHA-256(manifest_core.json bytes)
     const packetHash = sha256Bytes(Buffer.from(coreStr, "utf-8"));
     fs.writeFileSync(path.join(verificationDir, "packet_hash.txt"), packetHash + "\n", "utf-8");
 
-    // 3) manifest.json (full inventory, includes packet_hash + manifest_core, excludes manifest.json itself)
     const manifest = { run_id: runId, created_at_utc: nowIso(), files: [] };
     const fullSkips = new Set([relManifest]);
 
@@ -1127,6 +1098,7 @@ function renderExecutionReportTxt({
     fs.writeFileSync(path.join(verificationDir, "manifest.json"), manifestStr, "utf-8");
 
     console.log(`RUN COMPLETE: ${String(runStatus).toUpperCase()}`);
+    console.log(`RUN ID: ${runId}`);
     console.log(`Deliverable: ${deliverableDir}`);
     console.log(`Packet Hash: ${packetHash}`);
 
