@@ -39,6 +39,7 @@
  *       evidence_index.json
  *       interaction_log.json
  *       policy_overrides.json
+ *       flow_plan.sealed.json
  *     02_Exhibits/
  *       <ALLEGATION_ID_FOLDER>/*.png
  *       GEN/*.png
@@ -269,7 +270,6 @@ function renderExecutionReportTxt({
   if (runMetadata.error) lines.push(`Error Detail:\t${runMetadata.error}`);
   lines.push("");
 
-  // 1.1 Policy Overrides
   lines.push("1.1 Policy Overrides");
   const overrides = interactionLog.filter((e) => e && e.action === "policy_override");
   if (!overrides.length) {
@@ -391,7 +391,9 @@ function renderExecutionReportTxt({
     const hasInteraction = flow.steps.some((s) => INTERACTIVE_STEPS.includes(String((s && s.type) || "")));
     if (!hasInteraction) {
       console.error("FATAL: Quality Gate Failure. No interactive step types were detected in this flow plan.");
-      console.error("       Add at least one interactive step (click_selector, fill, press, tab), or use capture_mode: \"passive\".");
+      console.error(
+        '       Add at least one interactive step (click_selector, fill, press, tab), or use capture_mode: "passive".'
+      );
       process.exit(1);
     }
   }
@@ -451,6 +453,8 @@ function renderExecutionReportTxt({
     protocol_version: protocolVersion,
     flow_id: flow.flow_id,
     start_url: flow.start_url,
+    goal_selector: flow.goal_selector ? String(flow.goal_selector) : null,
+    goal_expectation: flow.goal_expectation ? String(flow.goal_expectation) : null,
     capture_mode: captureMode,
     started_at_utc: nowIso(),
     finished_at_utc: null,
@@ -465,7 +469,8 @@ function renderExecutionReportTxt({
     },
     stabilization: {
       window_ms: STABILIZE_MS,
-      policy: "Log instability, decide on final count, do not fail solely due to change (except where stability is explicitly required).",
+      policy:
+        "Log instability, decide on final count, do not fail solely due to change (except where stability is explicitly required).",
     },
     environment: {
       node_version: process.version,
@@ -481,6 +486,11 @@ function renderExecutionReportTxt({
   };
 
   writeJson(path.join(verificationDir, "run_metadata.json"), runMetadata);
+
+  // Seal the exact flow plan into the deliverable packet
+  try {
+    fs.writeFileSync(path.join(reportDir, "flow_plan.sealed.json"), stableStringify(flow, 2), "utf-8");
+  } catch (_) {}
 
   fs.writeFileSync(
     path.join(deliverableDir, "00_README.txt"),
@@ -501,7 +511,7 @@ function renderExecutionReportTxt({
    for ${RAW_RETENTION_DAYS} days. Release requires a separate engagement.
 
 4. Status Banner
-   '03_Verification/STATUS.txt' is informational and not required for hash verification.
+   '03_Verification/STATUS.txt' is informational and is not required for hash verification.
 `,
     "utf-8"
   );
@@ -574,6 +584,7 @@ function renderExecutionReportTxt({
       label: label || null,
       filename: screenshotName,
       rel_path: relShot,
+      page_url: page ? page.url() : null,
       raw_html: relHtml,
       raw_ax: relAx,
       timestamp_utc: nowIso(),
@@ -663,7 +674,6 @@ function renderExecutionReportTxt({
       return;
     }
 
-    // OVERRIDE PATH, LOG IT (Improvement 1)
     const sample = await stabilizedCount(selector, timeoutMs, contextObj);
     const cFinal = sample.final;
 
@@ -695,7 +705,6 @@ function renderExecutionReportTxt({
       timestamp_utc: nowIso(),
     });
 
-    // D) stability required for allow_multiple_matches path
     if (sample.unstable) {
       throw new Error(
         `wait_selector stability requirement not met: Selector "${selector}" count changed during stabilization window (first=${sample.first}, final=${sample.final}).`
@@ -709,7 +718,6 @@ function renderExecutionReportTxt({
       );
     }
 
-    // Best effort: wait until at least one visible exists
     try {
       await page.waitForFunction(
         (sel) => {
@@ -733,14 +741,12 @@ function renderExecutionReportTxt({
 
     const aidRaw = canonicalAllegationId(s && s.allegation_id);
 
-    // Policy enforcement: allow_multiple_matches only allowed on wait_selector
     if (s && typeof s.allow_multiple_matches !== "undefined" && t !== "wait_selector") {
       hardFailPolicy(
         `Policy Violation: allow_multiple_matches is only permitted for wait_selector. Found on step type "${t}".`
       );
     }
 
-    // Policy enforcement: goal_text forbidden anywhere
     if (s && typeof s.goal_text !== "undefined" && s.goal_text !== null) {
       hardFailPolicy("Policy Violation: goal_text is forbidden in this protocol version. Remove goal_text from steps.");
     }
@@ -839,16 +845,55 @@ function renderExecutionReportTxt({
 
     // Step 001: initial navigation
     stepIndex = 1;
+
+    // URL provenance, declared start URL (plan intent)
+    interactionLog.push({
+      step_index: stepIndex,
+      allegation_id: "GEN",
+      action: "provenance_start_url",
+      result: "info",
+      error_message: null,
+      note: `Declared start_url: ${flow.start_url}`,
+      url: flow.start_url,
+      timestamp_utc: nowIso(),
+    });
+
+    // Backward compatible navigation record
+    interactionLog.push({
+      step_index: stepIndex,
+      allegation_id: "GEN",
+      action: "goto",
+      result: "info",
+      error_message: null,
+      note: "Declared start_url (flow.start_url).",
+      url: flow.start_url,
+      timestamp_utc: nowIso(),
+    });
+
     await page.goto(flow.start_url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
 
     await captureEvidence("Initial Load", "GEN");
+
+    // URL provenance, final resolved URL (browser observed)
+    interactionLog.push({
+      step_index: stepIndex,
+      allegation_id: "GEN",
+      action: "provenance_final_url",
+      result: "success",
+      error_message: null,
+      note: `Final URL after navigation: ${page.url()}`,
+      url: page.url(),
+      timestamp_utc: nowIso(),
+    });
+
+    // Backward compatible navigation record
     interactionLog.push({
       step_index: stepIndex,
       allegation_id: "GEN",
       action: "goto",
       result: "success",
       error_message: null,
-      note: null,
+      note: "Final URL after navigation (page.url()).",
       url: page.url(),
       timestamp_utc: nowIso(),
     });
@@ -889,12 +934,10 @@ function renderExecutionReportTxt({
 
     // Goal verification (optional, strict if present)
     if (flow.goal_selector) {
-      // HARD FAIL if someone tries to sneak goal_text
       if (typeof flow.goal_text !== "undefined" && flow.goal_text !== null) {
         throw new Error("Policy Violation: goal_text is forbidden in this protocol version.");
       }
 
-      // Keep filesystem numeric, log "GOAL"
       stepIndex += 1;
 
       const goalSelector = String(flow.goal_selector);
@@ -916,7 +959,8 @@ function renderExecutionReportTxt({
           throw new Error(`Goal Failed: Selector "${goalSelector}" matched ${finalCount} elements (ambiguity).`);
         }
 
-        const goalMet = (expectation === "present" && finalCount === 1) || (expectation === "absent" && finalCount === 0);
+        const goalMet =
+          (expectation === "present" && finalCount === 1) || (expectation === "absent" && finalCount === 0);
 
         if (!goalMet) {
           throw new Error(
@@ -1023,7 +1067,7 @@ function renderExecutionReportTxt({
     writeJson(path.join(reportDir, "interaction_log.json"), interactionLog);
     writeJson(path.join(reportDir, "evidence_index.json"), evidenceIndex);
 
-    // Improvement 2: policy_overrides.json in 01_Report
+    // policy_overrides.json in 01_Report
     const policyOverrides = interactionLog.filter((e) => e && e.action === "policy_override");
     writeJson(path.join(reportDir, "policy_overrides.json"), policyOverrides);
 
