@@ -1,49 +1,27 @@
-# =========================
-# Node / Playwright
-# =========================
+# Dependencies
 node_modules/
+
+# Runs, packets, raw evidence
+runs/
+_raw/
+
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# =========================
-# Runtime Artifacts
-# =========================
-runs/
-_raw/
-**/_raw/
-*.har
-*.webm
-trace.zip
-
-# =========================
-# Logs
-# =========================
-*.log
-
-# =========================
-# OS / Editor Noise
-# =========================
+# OS junk
 .DS_Store
 Thumbs.db
-desktop.ini
+Desktop.ini
+
+# Editors
 .vscode/
 .idea/
+*.swp
 
-# =========================
-# Local Test Harnesses
-# (Intentionally NOT versioned)
-# =========================
-tests/
-stress_tests/verify_break
-stress_tests/**/*.html
-stress_tests/**/*.ps1
-stress_tests/test_*.json
-
-# =========================
-# Temporary / Scratch
-# =========================
-tmp/
-temp/
-
+# Env
+.env
+.env.*
