@@ -1,12 +1,12 @@
-# TEST AUTHORITY — Access Forensics SKU-A v3.5
+# TEST AUTHORITY - Access Forensics SKU-A v3.5
 
 ## Purpose
 
 This document defines the authoritative test reference for Access Forensics SKU-A v3.5.
 
-It exists to prevent post-hoc reinterpretation, selective citation, or ambiguity regarding test validity, scope, or finality.
+It exists to prevent post-hoc reinterpretation, selective citation, scope drift, or ambiguity regarding test validity, completeness, or finality.
 
-Any test results, claims of compliance, representations of system behavior, or external citations must anchor to the authority defined in this document.
+Any test results, claims of compliance, representations of system behavior, or external citations MUST anchor to the authority defined in this document.
 
 ---
 
@@ -16,85 +16,53 @@ Any test results, claims of compliance, representations of system behavior, or e
 
 - Tag: `v3.5-authority`
 - Commit: `1f8b429`
-- Branch alignment: `main`, `origin/main`, and `origin/HEAD` all point to this commit
+- Branch alignment: `main`, `origin/main`, and `origin/HEAD` all resolve to this commit
 
-This tag represents the complete, deterministic, and finalized test authority for Access Forensics SKU-A v3.5, including both the test suite and the authority documentation itself.
+The annotated tag `v3.5-authority` represents the complete, deterministic, and finalized test authority for Access Forensics SKU-A v3.5.
 
-No commits after this tag modify executor behavior, test logic, verification criteria, or authority definitions for v3.5.
+This authority includes:
+- The finalized deterministic test suite
+- All verification harnesses and pass/fail criteria
+- The authoritative documentation defining test scope and interpretation
 
----
-
-## Relationship to Other Tags
-
-The following tags exist for historical or developmental reference only and are not authoritative:
-
-- `v3.5.0`  
-  Product freeze for SKU-A v3.5 executor behavior.
-
-- `v3.5-tests-complete`  
-  Historical marker indicating completion of the deterministic test suite. Superseded by `v3.5-authority` as the citation anchor.
-
-- `v3.5-test02-pass`  
-  Intermediate validation milestone.
-
-- `v3.5-tests01-03`  
-  Early test aggregation tag.
-
-- `v3.5-tests01-03-renormalized`  
-  Normalized revision of early test aggregation.
-
-These tags must not be cited as proof of final system behavior or compliance.
+No commits after this tag modify executor behavior, test logic, verification criteria, or authority definitions for SKU-A v3.5.
 
 ---
 
-## Scope of the Authoritative Test Suite
+## Historical Clarification (Non-Authoritative)
 
-The authoritative test suite enforces, at minimum, the following invariants:
+Earlier internal references to "v3.5/" or slash-based identifiers denoted the SKU-A 3.5 version family or test scope during development.
 
-- Deterministic step indexing
-- Strict selector ambiguity hard-fail behavior where more than one match is found
-- Policy gate enforcement distinguishing passive capture from interactive actions
-- Explicit misuse and policy violation classification written to `STATUS.txt`
-- Sealed failure behavior where failed runs still produce complete deliverable packets
-- Mandatory manifest inclusion of:
-  - `STATUS.txt`
-  - `Execution_Report.txt`
-  - `interaction_log.json`
-  - `flow_plan.sealed.json`
-  - `run_metadata.json`
-  - `packet_hash.txt`
-- URL provenance logging with sealed start and final URLs
-- Deterministic verification using PowerShell-based harnesses
+These references were descriptive only and did NOT constitute a Git tag, immutable reference, or binding authority.
 
-All tests are repeatable, non-heuristic, non-probabilistic, and non-interpretive.
+All authority for SKU-A v3.5 is now explicitly and exclusively bound to the annotated Git tag `v3.5-authority`.
+
+Slash-based identifiers are deprecated and have no authoritative meaning.
 
 ---
 
-## Finality Statement
+## Citation Rule
 
-As of tag `v3.5-authority`, the Access Forensics SKU-A v3.5 test suite and authority definition are final, complete, and non-evolving.
+All statements regarding:
+- Test completeness
+- Deterministic behavior
+- Selector enforcement
+- Verification outcomes
+- Compliance claims
 
-Any future changes to executor behavior, test logic, verification criteria, or authority definitions require:
-- A new semantic version
-- A new authority document
-- A new authority tag
+must cite the tag `v3.5-authority`.
 
----
-
-## Usage Guidance
-
-When referencing Access Forensics SKU-A v3.5 in documentation, analysis, testimony, audits, or external communications:
-
-- Cite `v3.5-authority`
-- Reference this document
-- Avoid referencing branch tips, local runs, intermediate tags, or historical test milestones
-
-Reliance on any reference other than `v3.5-authority` constitutes use of non-authoritative material.
+Citations to branches, filenames, commit hashes without the authority tag, or prior version descriptors are non-authoritative.
 
 ---
 
-## Custody and Integrity Note
+## Authority Freeze
 
-This repository preserves full commit history, tags, and test artifacts.
+The authority defined by `v3.5-authority` is frozen.
 
-Authority is established by cryptographic commit hashes and annotated tags, not by narrative description or external interpretation.
+Any future changes to executor behavior, test logic, or verification methodology require:
+- A new SKU version, and
+- A new authority document, and
+- A new annotated authority tag
+
+Absent those steps, no reinterpretation or extension of v3.5 authority is valid.
