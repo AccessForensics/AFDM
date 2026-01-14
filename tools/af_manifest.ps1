@@ -1,38 +1,38 @@
 ﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Get-FileSha256Hex {
-  param([Parameter(Mandatory=$true)][string]$Path)
-  (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLowerInvariant()
-}
-
 function New-EvidenceManifest {
-  param([Parameter(Mandatory=$true)][string]$RunDir)
+  param(
+    [Parameter(Mandatory=$true)]
+    [string]$RunDir
+  )
 
-  $manifestPath = Join-Path $RunDir "manifest.json"
-  $packetHashPath = Join-Path $RunDir "packet_hash.txt"
+  $resolved = (Resolve-Path -LiteralPath $RunDir -ErrorAction Stop).Path
+  if (-not (Test-Path -LiteralPath $resolved -PathType Container)) {
+    throw "RunDir does not exist: $resolved"
+  }
 
-  $files = Get-ChildItem $RunDir -Recurse -File | Where-Object {
-    $_.Name -notin @("manifest.json","packet_hash.txt")
-  } | Sort-Object FullName
+  $manifestPath = Join-Path $resolved "manifest.json"
 
-  $entries = foreach ($f in $files) {
-    $rel = $f.FullName.Substring($RunDir.Length).TrimStart("\","/")
-    [ordered]@{
-      path   = ($rel -replace "\\","/")
-      bytes  = $f.Length
-      sha256 = Get-FileSha256Hex $f.FullName
+  $files = Get-ChildItem -LiteralPath $resolved -Recurse -File |
+    Where-Object { $_.FullName -ne $manifestPath }
+
+  $artifacts = foreach ($f in $files) {
+    $rel = $f.FullName.Substring($resolved.Length).TrimStart('\')
+    $hash = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLower()
+
+    [pscustomobject]@{
+      path   = $rel -replace '\\','/'
+      sha256 = $hash
+      bytes  = [int64]$f.Length
     }
   }
 
-  [ordered]@{
-    manifest_version = "1.0"
-    generated_utc    = [DateTimeOffset]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
-    root             = (Split-Path -Leaf $RunDir)
-    files            = $entries
-  } | ConvertTo-Json -Depth 10 | Set-Content $manifestPath -Encoding UTF8
+  $manifest = [pscustomobject]@{
+    generated_at_utc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+    artifacts        = $artifacts
+  }
 
-  Get-FileSha256Hex $manifestPath | Set-Content $packetHashPath -Encoding ASCII
+  $json = $manifest | ConvertTo-Json -Depth 12
+  $json | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 }
-
-Export-ModuleMember -Function New-EvidenceManifest
