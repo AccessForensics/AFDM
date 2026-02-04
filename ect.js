@@ -7,7 +7,7 @@ class SKUAEngine {
     constructor(manifest) {
         this.manifest = manifest; 
         this.prevHash = manifest.hash || '00000000000000000000000000000000';
-        this.allowedSelectors = new Set(manifest.allowed_selectors);
+        this.allowedSelectors = new Set(manifest.allowed_selectors.map(s => s.id));
         this.denylist = new Set(['name', 'value', 'description', 'help', 'url', 'text', 'title', 'placeholder', 'ariaLabel']);
         this.outputDir = path.join('artifacts', `${manifest.matter_id}_${Date.now()}`);
         fs.ensureDirSync(this.outputDir);
@@ -15,7 +15,7 @@ class SKUAEngine {
     async initialize() {
         this.browser = await chromium.launch({ headless: true });
         this.context = await this.browser.newContext({ 
-            userAgent: "AccessForensics/SKU-A-Forensic-Observer/4.4.1", 
+            userAgent: "AccessForensics/SKU-A-Forensic-Observer/4.5.0", 
             viewport: this.manifest.viewport, 
             ignoreHTTPSErrors: true 
         });
@@ -53,10 +53,7 @@ class SKUAEngine {
         while (Date.now() - start < timeout) {
             await new Promise(r => setTimeout(r, 750));
             const currentCount = await this.page.evaluate(() => window.__af_mutations);
-            const finiteAnimations = await this.page.evaluate(() => 
-                document.getAnimations().filter(a => a.playState === 'running' && a.effect && a.effect.getTiming().iterations !== Infinity).length
-            );
-            if (currentCount === lastCount && finiteAnimations === 0) return true;
+            if (currentCount === lastCount) return true;
             lastCount = currentCount;
         }
     }
