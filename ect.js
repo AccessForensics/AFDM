@@ -9,6 +9,7 @@ class SKUAEngine {
         this.prevHash = manifest.hash || '00000000000000000000000000000000';
         this.allowedSelectors = new Set(manifest.allowed_selectors);
         this.denylist = new Set(['name', 'value', 'description', 'help', 'url', 'text', 'title', 'placeholder', 'ariaLabel']);
+        
         this.outputDir = manifest.mode === 'FULL_CAPTURE' ? 
             path.join('artifacts', `${manifest.matter_id}_${Date.now()}`) : null;
         if (this.outputDir) fs.ensureDirSync(this.outputDir);
@@ -17,7 +18,7 @@ class SKUAEngine {
     async initialize() {
         this.browser = await chromium.launch({ headless: true });
         this.context = await this.browser.newContext({
-            userAgent: "AccessForensics/SKU-A-Forensic-Observer/3.6.7",
+            userAgent: "AccessForensics/SKU-A-Forensic-Observer/3.6.9",
             viewport: this.manifest.viewport,
             ignoreHTTPSErrors: true
         });
@@ -48,7 +49,7 @@ class SKUAEngine {
         if (Array.isArray(node)) { node.forEach(item => this._redactRecursive(item)); }
         else {
             for (const key of Object.keys(node)) {
-                if (this.denylist.has(key)) node[key] = "[REDACTED_FOR_MINIMIZATION]";
+                if (this.denylist.has(key)) node[key] = "[REDACTED_BY_MINIMIZATION_POLICY]";
                 else this._redactRecursive(node[key]);
             }
         }
