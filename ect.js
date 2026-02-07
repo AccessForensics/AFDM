@@ -1,1 +1,2 @@
-﻿module.exports = require('./engine/ect.js');
+"use strict";
+module.exports = require("./engine/ect.js");

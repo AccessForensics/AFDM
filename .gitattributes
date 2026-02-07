@@ -5,6 +5,9 @@
 # Normalize all text files by default
 * text=auto
 
+# Ensure this file stays LF even on Windows
+.gitattributes text eol=lf
+
 # ============================
 # PowerShell (Windows-native)
 # ============================
@@ -27,36 +30,11 @@
 
 # Force LF for deterministic diffs across OS
 *.json text eol=lf
-*.html text eol=lf
-*.md   text eol=lf
-*.yml  text eol=lf
-*.yaml text eol=lf
 
 # ============================
-# Source code and scripts
+# JavaScript and documentation
 # ============================
 
-# JavaScript and shell scripts
 *.js text eol=lf
-*.sh text eol=lf
-
-# ============================
-# Node ecosystem
-# ============================
-
-# Lockfiles must be stable across platforms
-package-lock.json text eol=lf
-
-# ============================
-# Binary files (never normalize)
-# ============================
-
-*.png  binary
-*.jpg  binary
-*.jpeg binary
-*.gif  binary
-*.ico  binary
-*.zip  binary
-*.exe  binary
-*.pdf  binary
-*.webp binary
+*.md text eol=lf
+*.editorconfig text eol=lf
