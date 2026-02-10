@@ -1,4 +1,4 @@
-﻿const { chromium } = require('playwright');
+const { chromium } = require('playwright');
 const fs = require('fs-extra');
 const crypto = require('crypto');
 const path = require('path');
@@ -9,6 +9,10 @@ class SKUAEngine {
 
     // PRESERVE: hash chaining is evidentiary, every event must be chainable.
     this.prevHash = this.manifest.hash || '00000000000000000000000000000000';
+
+    // POLICY: Explicit Opt-In for unbounded capture.
+    // LEGAL WHY: Prevents accidental "dragnet" collection. Operator must intentionally assert "capture everything".
+    this.allowAllSelectors = Boolean(this.manifest.allow_all_selectors);
 
     // PRESERVE: interface evidence must be attributable to a scoped selector set.
     // LEGAL WHY: scope boundaries reduce accusations of over-collection.
@@ -180,7 +184,14 @@ class SKUAEngine {
 
   _isSelectorAllowed(selector) {
     if (typeof selector !== 'string' || selector.trim().length === 0) return false;
-    if (this.allowedSelectors.size === 0) return true; // permissive if no allowlist is provided
+
+    // ESCAPE HATCH: Explicitly configured unbounded mode.
+    if (this.allowAllSelectors) return true;
+
+    // DEFAULT: If no allowlist is provided and allowAll is false, DENY EVERYTHING.
+    // LEGAL WHY: An empty scope implies "nothing is in scope", not "everything is in scope".
+    if (this.allowedSelectors.size === 0) return false;
+
     return this.allowedSelectors.has(selector);
   }
 
@@ -251,4 +262,3 @@ class SKUAEngine {
 }
 
 module.exports = SKUAEngine;
-
