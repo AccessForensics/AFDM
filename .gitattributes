@@ -38,3 +38,4 @@
 *.js text eol=lf
 *.md text eol=lf
 *.editorconfig text eol=lf
+package.json text eol=lf
