@@ -40,6 +40,7 @@ const watchdog = setTimeout(() => {
     if (!outDir || typeof outDir !== "string") fail("Engine did not set outputDir");
 
     const jp = path.join(outDir, "journal.ndjson");
+    console.log('[AF_ARTIFACT_DIR]', path.resolve(outDir));
 
     // Force a journal entry. Prefer engine method if present.
     if (typeof eng._appendJournalEntry === "function") {
@@ -77,4 +78,5 @@ const watchdog = setTimeout(() => {
   console.error("[FAIL] exception:", e && e.stack ? e.stack : e);
   process.exit(1);
 });
+
 

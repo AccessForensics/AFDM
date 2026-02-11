@@ -9,3 +9,6 @@ how --name-only --oneline HEAD
 tatus
 *.bak
 *.tmp
+
+# Access Forensics: generated manifests (do not commit)
+manifests/_tmp_*.json
