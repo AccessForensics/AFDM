@@ -1,0 +1,12 @@
+{
+    "matter_id":  "smoke",
+    "strict_mode":  true,
+    "url":  "https://example.com",
+    "allowed_selectors":  [
+
+                          ],
+    "viewport":  {
+                     "height":  844,
+                     "width":  390
+                 }
+}
