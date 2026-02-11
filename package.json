@@ -19,6 +19,7 @@
     "scan:sku-a:web": "npm run smoke:desktop",
     "scan:sku-b:dual": "npm run smoke:dual",
     "scan:sku-b:web": "npm run smoke:desktop",
-    "scan:sku-b:mobile": "npm run smoke:mobile"
+    "scan:sku-b:mobile": "npm run smoke:mobile",
+    "seal:packet": "node tools/seal_packet.js"
   }
 }
