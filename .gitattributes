@@ -1,41 +1,11 @@
-# ============================
-# Global defaults
-# ============================
+# Normalize text files
+* text=auto eol=lf
 
-# Normalize all text files by default
-* text=auto
-
-# Ensure this file stays LF even on Windows
-.gitattributes text eol=lf
-
-# ============================
-# PowerShell (Windows-native)
-# ============================
-
-# PowerShell scripts require CRLF for reliable execution on Windows
-*.ps1  text eol=crlf
-*.psm1 text eol=crlf
-*.psd1 text eol=crlf
-
-# ============================
-# Windows command scripts
-# ============================
-
-*.cmd text eol=crlf
-*.bat text eol=crlf
-
-# ============================
-# Structured data and markup
-# ============================
-
-# Force LF for deterministic diffs across OS
+# Force JSON LF
 *.json text eol=lf
 
-# ============================
-# JavaScript and documentation
-# ============================
+# PowerShell scripts LF
+*.ps1  text eol=lf
 
-*.js text eol=lf
-*.md text eol=lf
-*.editorconfig text eol=lf
-package.json text eol=lf
+# Markdown keep LF
+*.md   text eol=lf
