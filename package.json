@@ -15,6 +15,10 @@
     "matter": "node triage_runner.js triage_manifest.json",
     "matter:triage": "node triage_runner.js triage_manifest.json",
     "verify:env": "node tools/verify_env.js",
-    "gate:smoke": "npm run smoke:dual && npm run verify:env"
+    "gate:smoke": "npm run smoke:dual && npm run verify:env",
+    "scan:sku-a:web": "npm run smoke:desktop",
+    "scan:sku-b:dual": "npm run smoke:dual",
+    "scan:sku-b:web": "npm run smoke:desktop",
+    "scan:sku-b:mobile": "npm run smoke:mobile"
   }
 }
