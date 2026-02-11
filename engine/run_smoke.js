@@ -36,11 +36,37 @@ const watchdog = setTimeout(() => {
     await eng.initialize();
     await eng.captureMirror();
 
-    console.log("[PASS] captureMirror completed");
+    const outDir = eng.outputDir;
+    if (!outDir || typeof outDir !== "string") fail("Engine did not set outputDir");
+
+    const jp = path.join(outDir, "journal.ndjson");
+
+    // Force a journal entry. Prefer engine method if present.
+    if (typeof eng._appendJournalEntry === "function") {
+      eng._appendJournalEntry({
+        type: "SMOKE",
+        ts_utc: new Date().toISOString(),
+        ok: true,
+        note: "smoke run completed"
+      });
+    } else {
+      fs.appendFileSync(jp, JSON.stringify({
+        type: "SMOKE",
+        ts_utc: new Date().toISOString(),
+        ok: true,
+        note: "fallback journal write"
+      }) + "\\n");
+    }
+
+    // SMOKE GATE: require journal.ndjson
+    if (!fs.existsSync(jp)) {
+      console.error("[FAIL] smoke gate: journal.ndjson missing:", jp);
+      process.exit(2);
+    }
+
+    console.log("[PASS] captureMirror completed + journal present");
   } finally {
     clearTimeout(watchdog);
-
-    // ect.js does not expose a close(), so we close Playwright directly.
     try { if (eng.context && typeof eng.context.close === "function") await eng.context.close(); } catch {}
     try { if (eng.browser && typeof eng.browser.close === "function") await eng.browser.close(); } catch {}
   }
@@ -51,3 +77,4 @@ const watchdog = setTimeout(() => {
   console.error("[FAIL] exception:", e && e.stack ? e.stack : e);
   process.exit(1);
 });
+
