@@ -1,4 +1,4 @@
-const { chromium } = require('playwright');
+﻿const { chromium } = require('playwright');
 const fs = require('fs-extra');
 const crypto = require('crypto');
 const path = require('path');
@@ -82,7 +82,13 @@ class SKUAEngine {
 
   async initialize() {
     this.browser = await chromium.launch({ headless: true });
+        // CONTEXT OVERRIDES: allow manifest to supply Playwright context options
+    // Used for mobile emulation signals (isMobile, hasTouch, userAgent, deviceScaleFactor, viewport).
+    const ctxOverrides = (this.manifest && this.manifest.playwright_context && typeof this.manifest.playwright_context === "object")
+      ? this.manifest.playwright_context
+      : {};
     this.context = await this.browser.newContext({
+      ...ctxOverrides,
       userAgent: "AccessForensics/SKU-A-Forensic-Observer/5.7.3",
       viewport: this.manifest.viewport,
       ignoreHTTPSErrors: true
@@ -262,3 +268,5 @@ class SKUAEngine {
 }
 
 module.exports = SKUAEngine;
+
+
