@@ -91,4 +91,15 @@ const envRecord = {
 
 fs.appendFileSync(journalPath, JSON.stringify(envRecord) + "\n", "utf8");
 console.log("[OK] ENV appended ->", journalPath);
+
+{
+  // AF_SEAL_BEGIN
+  const __afSealScript = path.join(repoRoot, "tools", "packet_seal.js");
+  const __afSealRes = spawnSync(nodeExe, [__afSealScript, artifactDir], { cwd: repoRoot, encoding: "utf8" });
+  if (__afSealRes.stdout) process.stdout.write(__afSealRes.stdout);
+  if (__afSealRes.stderr) process.stderr.write(__afSealRes.stderr);
+  if (__afSealRes.status !== 0) fatal("[FATAL] packet_seal failed for: " + artifactDir, 9);
+  // AF_SEAL_END
+}
+
 process.exit(0);
