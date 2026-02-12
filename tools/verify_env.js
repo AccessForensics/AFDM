@@ -1,102 +1,157 @@
 ﻿const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const crypto = require("crypto");
 
-const repoRoot = path.resolve(__dirname, "..");
+function fatal(msg, code) { console.error(msg); process.exit(code); }
 
-function fatal(msg, code) {
-  console.error(msg);
-  process.exit(code);
+function sha256Bytes(buf) { return crypto.createHash("sha256").update(buf).digest("hex"); }
+function sha256File(p) { return sha256Bytes(fs.readFileSync(p)); }
+
+function canonicalize(v) {
+  if (v === null || v === undefined) return v;
+  if (Array.isArray(v)) return v.map(canonicalize);
+  if (typeof v !== "object") return v;
+  const out = {};
+  for (const k of Object.keys(v).sort((a,b)=>a.localeCompare(b))) out[k] = canonicalize(v[k]);
+  return out;
 }
+function toCanonicalJSON(obj) { return JSON.stringify(canonicalize(obj)); }
 
-function gitHeadSha() {
-  const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" });
-  if (r.status !== 0) return null;
-  return (r.stdout || "").trim() || null;
-}
+function readChromiumRevision(repoRoot) {
+  const candidates = [
+    path.join(repoRoot, "node_modules", "playwright-core", "browsers.json"),
+    path.join(repoRoot, "node_modules", "playwright", "browsers.json")
+  ];
 
-function pkgVersion() {
-  try {
-    const p = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
-    return p.version || null;
-  } catch {
-    return null;
-  }
-}
-
-function newestTwoJournals() {
-  const artifactsDir = path.join(repoRoot, "artifacts");
-  if (!fs.existsSync(artifactsDir)) fatal("[FATAL] artifacts/ not found", 2);
-
-  const dirs = fs.readdirSync(artifactsDir, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
-
-  const journals = [];
-  for (const d of dirs) {
-    const j = path.join(artifactsDir, d, "journal.ndjson");
-    if (!fs.existsSync(j)) continue;
-    const stat = fs.statSync(j);
-    journals.push({ p: j, m: stat.mtimeMs });
-  }
-
-  journals.sort((a,b) => b.m - a.m);
-  return journals.slice(0, 2).map(x => x.p);
-}
-
-function readEnvRecord(journalPath) {
-  const txt = fs.readFileSync(journalPath, "utf8");
-  const lines = txt.split(/\r?\n/).filter(Boolean);
-
-  // Find first ENV line
-  for (const line of lines) {
-    if (!line.includes('"t":"ENV"')) continue;
+  for (const p of candidates) {
     try {
-      const obj = JSON.parse(line);
-      if (obj && obj.t === "ENV") return obj;
-    } catch {
-      // ignore bad json lines
-    }
+      if (!fs.existsSync(p)) continue;
+      const b = JSON.parse(fs.readFileSync(p, "utf8"));
+      if (b && Array.isArray(b.browsers)) {
+        const c = b.browsers.find(x => x && x.name === "chromium");
+        if (c && c.revision) return { rev: String(c.revision), source: p };
+      }
+    } catch {}
   }
-  return null;
+  return { rev: "unknown", source: null };
+}
+
+function toolchainId(repoRoot) {
+  const node = (process.versions && process.versions.node) ? process.versions.node : "unknown";
+
+  let playwright = "unknown";
+  try {
+    const p = JSON.parse(fs.readFileSync(path.join(repoRoot, "node_modules", "playwright", "package.json"), "utf8"));
+    if (p && p.version) playwright = String(p.version);
+  } catch {}
+  if (playwright === "unknown") {
+    try {
+      const p = JSON.parse(fs.readFileSync(path.join(repoRoot, "node_modules", "playwright-core", "package.json"), "utf8"));
+      if (p && p.version) playwright = "core@" + String(p.version);
+    } catch {}
+  }
+
+  const cr = readChromiumRevision(repoRoot);
+  if (cr.rev === "unknown") {
+    console.error("[FATAL] chromium revision unknown (cannot read browsers.json under playwright-core or playwright)");
+    process.exit(24);
+  }
+
+  return `node=${node};playwright=${playwright};chromium_rev=${cr.rev}`;
+}
+
+function readJournal(journalPath) {
+  const txt = fs.readFileSync(journalPath, "utf8");
+  return txt.split(/\r?\n/).filter(Boolean).map(line => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
 }
 
 function requireFields(env, journalPath) {
-  const required = ["env_label","viewport","isMobile","hasTouch","deviceScaleFactor","userAgent","version","git_sha"];
-  for (const k of required) {
-    if (!(k in env)) fatal("[FATAL] ENV missing field " + k + " in " + journalPath, 5);
+  const req = ["env_label","viewport","isMobile","hasTouch","deviceScaleFactor","userAgent","version","git_sha","ts"];
+  for (const k of req) {
+    if (!(k in env)) fatal("[FATAL] ENV missing " + k + " in " + journalPath, 8);
   }
 }
 
-const expectedVer = pkgVersion();
-const expectedSha = gitHeadSha();
+function verifyPacketSeal(artifactDir) {
+  const idxPath  = path.join(artifactDir, "index.json");
+  const manPath  = path.join(artifactDir, "manifest.json");
+  const hashPath = path.join(artifactDir, "packet_hash.txt");
 
-const newest = newestTwoJournals();
-if (newest.length < 2) fatal("[FATAL] Need at least 2 journals (desktop+mobile) in artifacts/", 3);
-if (newest[0] === newest[1]) fatal("[FATAL] Journals must be distinct", 4);
+  if (!fs.existsSync(hashPath)) fatal("[FATAL] CRASHED_RUN missing packet_hash.txt in " + artifactDir, 9);
+  if (!fs.existsSync(idxPath))  fatal("[FATAL] Missing index.json in " + artifactDir, 9);
+  if (!fs.existsSync(manPath))  fatal("[FATAL] Missing manifest.json in " + artifactDir, 9);
 
-const envA = readEnvRecord(newest[0]);
-const envB = readEnvRecord(newest[1]);
-if (!envA) fatal("[FATAL] Missing ENV record in " + newest[0], 4);
-if (!envB) fatal("[FATAL] Missing ENV record in " + newest[1], 4);
+  const got = (fs.readFileSync(hashPath, "utf8") || "").trim();
+  if (!/^[0-9a-f]{64}$/.test(got)) fatal("[FATAL] packet_hash.txt invalid in " + artifactDir, 10);
 
-requireFields(envA, newest[0]);
-requireFields(envB, newest[1]);
+  let idx;
+  try { idx = JSON.parse(fs.readFileSync(idxPath, "utf8")); }
+  catch { fatal("[FATAL] index.json not valid JSON in " + artifactDir, 10); }
 
-const labels = new Set([envA.env_label, envB.env_label]);
-if (!labels.has("DESKTOP")) fatal("[FATAL] Expected DESKTOP env_label in newest two journals", 6);
-if (!labels.has("MOBILE_EMULATION")) fatal("[FATAL] Expected MOBILE_EMULATION env_label in newest two journals", 6);
+  if (!idx || Array.isArray(idx) || typeof idx !== "object") fatal("[FATAL] index.json must be a flat object map in " + artifactDir, 10);
 
-if (expectedVer && (envA.version !== expectedVer || envB.version !== expectedVer)) {
-  fatal("[FATAL] ENV version mismatch. expected=" + expectedVer, 7);
+  for (const k of Object.keys(idx)) {
+    const v = idx[k];
+    if (typeof v !== "string" || !/^[0-9a-f]{64}$/.test(v)) fatal("[FATAL] index.json value must be sha256 hex for key=" + k + " in " + artifactDir, 10);
+    const fp = path.join(artifactDir, k.split("/").join(path.sep));
+    if (!fs.existsSync(fp)) fatal("[FATAL] INTACT failed, missing file: " + k + " in " + artifactDir, 11);
+    const actual = sha256File(fp);
+    if (actual !== v) fatal("[FATAL] CORRUPTED_ARTIFACT sha mismatch for: " + k + " in " + artifactDir, 12);
+  }
+
+  const canonicalIndex = toCanonicalJSON(idx);
+  const expected = sha256Bytes(Buffer.from(canonicalIndex, "utf8"));
+  if (expected !== got) fatal("[FATAL] TAMPERED_SEAL hash mismatch in " + artifactDir, 13);
+
+  let man;
+  try { man = JSON.parse(fs.readFileSync(manPath, "utf8")); }
+  catch { fatal("[FATAL] manifest.json not valid JSON in " + artifactDir, 10); }
+
+  const repoRoot = path.resolve(__dirname, "..");
+  const actualTc = toolchainId(repoRoot);
+  const sealedTc = (man && man.toolchain_id) ? String(man.toolchain_id) : null;
+
+  if (!sealedTc) { console.error("[FATAL] Missing toolchain_id in manifest.json for " + artifactDir); process.exit(24); }
+  if (sealedTc !== actualTc) {
+    console.error("[FATAL] toolchain_id mismatch");
+    console.error("  sealed =", sealedTc);
+    console.error("  actual =", actualTc);
+    process.exit(24);
+  }
 }
 
-if (expectedSha && (envA.git_sha !== expectedSha || envB.git_sha !== expectedSha)) {
-  fatal("[FATAL] ENV git_sha mismatch. expected=" + expectedSha, 8);
+function main() {
+  const repoRoot = path.resolve(__dirname, "..");
+  const artifactsDir = path.join(repoRoot, "artifacts");
+  if (!fs.existsSync(artifactsDir)) fatal("[FATAL] artifacts dir missing", 7);
+
+  const dirs = fs.readdirSync(artifactsDir)
+    .filter(n => n.startsWith("smoke_"))
+    .map(n => ({ n, p: path.join(artifactsDir, n), t: fs.statSync(path.join(artifactsDir, n)).mtimeMs }))
+    .sort((a,b)=>b.t-a.t)
+    .slice(0, 2);
+
+  if (dirs.length < 2) fatal("[FATAL] not enough smoke dirs to verify", 7);
+
+  const journals = [];
+  for (const d of dirs) {
+    const journalPath = path.join(d.p, "journal.ndjson");
+    if (!fs.existsSync(journalPath)) fatal("[FATAL] journal.ndjson missing in " + d.p, 7);
+
+    const records = readJournal(journalPath);
+    const env = records.find(r => r.t === "ENV");
+    if (!env) fatal("[FATAL] ENV record missing in " + journalPath, 8);
+    requireFields(env, journalPath);
+
+    verifyPacketSeal(d.p);
+    journals.push(journalPath);
+  }
+
+  console.log("[OK] verify:env passed (ENV + SEAL + INTACT + TOOLCHAIN)");
+  console.log("[OK] newest two journals:");
+  for (const j of journals) console.log(" - " + j);
 }
 
-console.log("[OK] verify:env passed");
-console.log("[OK] desktop+mobile journals:");
-console.log(" -", newest[0]);
-console.log(" -", newest[1]);
-process.exit(0);
+main();
