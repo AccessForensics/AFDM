@@ -4,22 +4,26 @@
     "description":  "Hardened mechanical observer for ADA Title III litigation capture.",
     "main":  "engine/ect.js",
     "dependencies":  {
-                         "fs-extra":  "^11.2.0",
-                         "playwright":  "1.55.1"
+                         "pdfjs-dist":  "^4.10.38",
+                         "playwright":  "1.55.1",
+                         "fs-extra":  "^11.2.0"
                      },
     "scripts":  {
-                    "smoke":  "node engine/run_smoke.js manifests/smoke.json",
-                    "smoke:desktop":  "node engine/run_smoke_desktop.js manifests/smoke_desktop.json",
-                    "smoke:mobile":  "node engine/run_smoke_mobile.js manifests/smoke_mobile.json",
                     "smoke:dual":  "npm run smoke:desktop \u0026\u0026 npm run smoke:mobile",
-                    "matter":  "node triage_runner.js triage_manifest.json",
-                    "matter:triage":  "node triage_runner.js triage_manifest.json",
-                    "verify:env":  "node tools/verify_env.js",
                     "gate:smoke":  "npm run smoke:dual \u0026\u0026 npm run verify:env",
-                    "scan:sku-a:web":  "npm run smoke:desktop",
-                    "scan:sku-b:dual":  "npm run smoke:dual",
-                    "scan:sku-b:web":  "npm run smoke:desktop",
+                    "smoke:mobile":  "node engine/run_smoke_mobile.js manifests/smoke_mobile.json",
+                    "smoke":  "node engine/run_smoke.js manifests/smoke.json",
+                    "matter":  "node triage_runner.js triage_manifest.json",
                     "scan:sku-b:mobile":  "npm run smoke:mobile",
-                    "seal:packet":  "node tools/seal_packet.js"
+                    "verify:env":  "node tools/verify_env.js",
+                    "matter:triage":  "node triage_runner.js triage_manifest.json",
+                    "scan:sku-b:dual":  "npm run smoke:dual",
+                    "intake:prepare":  "node tools/intake/intake_prepare.js",
+                    "intake:extract":  "node tools/intake/intake_extract.js",
+                    "scan:sku-a:web":  "npm run smoke:desktop",
+                    "scan:sku-b:web":  "npm run smoke:desktop",
+                    "seal:packet":  "node tools/seal_packet.js",
+                    "smoke:desktop":  "node engine/run_smoke_desktop.js manifests/smoke_desktop.json"
                 }
 }
+

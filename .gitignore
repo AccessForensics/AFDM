@@ -12,3 +12,6 @@ tatus
 
 # Access Forensics: generated manifests (do not commit)
 manifests/_tmp_*.json
+
+_intake_demo/
+

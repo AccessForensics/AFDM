@@ -6,11 +6,13 @@
   Deterministic intent:
   - Extract per-page text with pdfjs-dist
   - Extract URL/domain candidates with page references
-  - No guessing which target is "correct", just enumerate and cite evidence locations
+  - Enumerate, do not guess
 */
 const fs = require("fs");
 const path = require("path");
-const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
+
+// pdfjs-dist v4 ships legacy build here:
+const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.mjs");
 
 function die(msg) {
   console.error("ERROR:", msg);
@@ -37,10 +39,8 @@ function normalizeCandidate(raw) {
   if (!raw) return null;
   let s = String(raw).trim();
 
-  // Strip common trailing punctuation
   s = s.replace(/[)\],.;:'"!?]+$/g, "");
 
-  // If URL, parse hostname
   if (/^https?:\/\//i.test(s)) {
     try {
       const u = new URL(s);
@@ -50,16 +50,10 @@ function normalizeCandidate(raw) {
     }
   }
 
-  // If starts with www., keep it as hostname
   if (/^www\./i.test(s)) s = s.slice(4);
-
-  // Remove any path segment if present
   s = s.split("/")[0];
 
-  // Reject emails
   if (/@/.test(s)) return null;
-
-  // Basic domain sanity: must contain a dot, no spaces
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(s)) return null;
 
   return s.toLowerCase();
@@ -68,18 +62,13 @@ function normalizeCandidate(raw) {
 function makeSnippet(text, start, end, radius = 80) {
   const a = Math.max(0, start - radius);
   const b = Math.min(text.length, end + radius);
-  const snippet = text.slice(a, b).replace(/\s+/g, " ").trim();
-  return snippet;
+  return text.slice(a, b).replace(/\s+/g, " ").trim();
 }
 
 function extractMatches(pageText) {
   const out = [];
 
-  // URLs
   const urlRe = /\bhttps?:\/\/[^\s<>"']+/gi;
-
-  // Bare domains (avoid capturing file extensions in weird strings as best effort)
-  // Examples: example.com, sub.example.co.uk, www.example.com
   const domRe = /\b(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+\b/gi;
 
   let m;
@@ -89,12 +78,9 @@ function extractMatches(pageText) {
 
   while ((m = domRe.exec(pageText)) !== null) {
     const raw = m[0];
-
-    // Heuristic: skip if preceded or followed by @ (email)
     const prev = m.index > 0 ? pageText[m.index - 1] : "";
     const next = m.index + raw.length < pageText.length ? pageText[m.index + raw.length] : "";
     if (prev === "@" || next === "@") continue;
-
     out.push({ raw, start: m.index, end: m.index + raw.length, kind: "domain" });
   }
 
@@ -104,14 +90,12 @@ function extractMatches(pageText) {
 async function extractPdfPerPage(pdfPath) {
   const data = readFileBytes(pdfPath);
   const doc = await pdfjsLib.getDocument({ data }).promise;
-  const pages = [];
 
+  const pages = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
     const strings = content.items.map(it => (it && it.str ? it.str : "")).filter(Boolean);
-
-    // Keep it stable: join with single spaces, normalize whitespace
     const text = strings.join(" ").replace(/\s+/g, " ").trim();
     pages.push({ page: i, text });
   }
@@ -130,7 +114,6 @@ async function main() {
 
   const pdf = await extractPdfPerPage(pdfPath);
 
-  // Write extracted_text.txt with page headers
   const extractedTextPath = path.join(outDir, "extracted_text.txt");
   const lines = [];
   lines.push(`# SOURCE_PDF: ${path.resolve(pdfPath)}`);
@@ -145,7 +128,6 @@ async function main() {
 
   fs.writeFileSync(extractedTextPath, lines.join("\n"), { encoding: "utf8" });
 
-  // Candidate extraction with page evidence
   const occurrences = [];
   const byDomain = new Map();
 
@@ -170,18 +152,13 @@ async function main() {
 
       occurrences.push(occ);
 
-      if (!byDomain.has(normalized)) {
-        byDomain.set(normalized, { domain: normalized, occurrences: [] });
-      }
+      if (!byDomain.has(normalized)) byDomain.set(normalized, { domain: normalized, occurrences: [] });
       byDomain.get(normalized).occurrences.push(occ);
     }
   }
 
-  // Stable sort: domain asc, then page asc, then start asc
   const domains = Array.from(byDomain.values()).sort((a, b) => a.domain.localeCompare(b.domain));
-  for (const d of domains) {
-    d.occurrences.sort((a, b) => (a.page - b.page) || (a.start - b.start));
-  }
+  for (const d of domains) d.occurrences.sort((a, b) => (a.page - b.page) || (a.start - b.start));
 
   const candidates = {
     version: "intake_candidates_v1",
@@ -190,7 +167,7 @@ async function main() {
     generated_utc: new Date().toISOString(),
     domains,
     total_domains: domains.length,
-    total_occurrences: occurrences.length
+    total_occurrences: occurrences.length,
   };
 
   const candidatesPath = path.join(outDir, "candidates.json");
@@ -199,10 +176,9 @@ async function main() {
   const flatPath = path.join(outDir, "candidates_flat.txt");
   fs.writeFileSync(flatPath, domains.map(d => d.domain).join("\n") + (domains.length ? "\n" : ""), { encoding: "utf8" });
 
-  console.log("OK: extracted:", extractedTextPath);
+  console.log("OK: extracted :", extractedTextPath);
   console.log("OK: candidates:", candidatesPath);
   console.log("OK: flat list :", flatPath);
-  console.log("NOTE: Next step is human confirmation, create selected_targets.txt in the same folder as candidates.json.");
 }
 
 main().catch(err => die(err && err.stack ? err.stack : String(err)));
