@@ -14,7 +14,15 @@ const path = require("path");
 // pdfjs-dist v3 legacy CJS build:
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 
-function die(msg) {
+// SUPPRESS_PDFJS_CANVAS_WARNINGS
+// We only extract text, we do not render pages. pdfjs may warn about missing canvas polyfills.
+// Keep stderr readable for operators.
+const _warn = console.warn;
+console.warn = (...args) => {
+  const msg = String(args && args[0] ? args[0] : "");
+  if (msg.includes("Cannot polyfill `DOMMatrix`") || msg.includes("Cannot polyfill `Path2D`")) return;
+  _warn(...args);
+};function die(msg) {
   console.error("ERROR:", msg);
   process.exit(1);
 }
@@ -32,7 +40,9 @@ function ensureDir(p) {
 }
 
 function readFileBytes(p) {
-  return fs.readFileSync(p);
+  const b = fs.readFileSync(p);
+  // pdfjs-dist expects Uint8Array, not Buffer
+  return new Uint8Array(b);
 }
 
 function normalizeCandidate(raw) {
@@ -182,3 +192,4 @@ async function main() {
 }
 
 main().catch((err) => die(err && err.stack ? err.stack : String(err)));
+
