@@ -1,14 +1,22 @@
 ﻿/**
- * Intake Prepare (v1)
- * - Takes a complaint PDF (already extracted by intake_extract.js)
- * - Auto-selects target domains with deterministic heuristics
- * - Emits complaint.txt + targets.txt
- * - Writes INTAKE_SUMMARY.txt so the operator never sees "blank tabs" confusion
+ * Intake Prepare (v1.1) [ONE DEFENDANT, ONE DOMAIN]
  *
- * Behavior:
- * - If selected_targets.txt exists and has >=1 line, it is treated as an explicit override and validated.
- * - Else, the system auto-picks and writes selected_targets.txt for auditability.
- * - If auto-pick cannot reach minimum confidence, it fails hard (no silent empty outputs).
+ * Contract rules:
+ * - exactly 1 target domain, always
+ * - never write empty complaint.txt or targets.txt
+ * - never "guess" when confidence is weak, fail hard with an actionable summary
+ *
+ * Inputs:
+ *   --pdf <path_to_pdf>
+ *   --out <output_dir>
+ *   --min-chars <n> optional, default 50
+ *
+ * Outputs (in outDir):
+ *   extracted_text.txt, candidates.json, candidates_flat.txt  [from intake_extract.js]
+ *   selected_targets.txt   [written by auto-pick OR provided by override]
+ *   complaint.txt          [copy of extracted_text.txt]
+ *   targets.txt            [exactly one domain]
+ *   INTAKE_SUMMARY.txt     [operator-visible truth, no blank tabs confusion]
  */
 
 const fs = require("fs");
@@ -54,8 +62,6 @@ function uniq(arr) {
 }
 
 function extractWindowScore(textLower, domain) {
-  // Deterministic light heuristic: score if domain appears near website-ish language
-  // No ML, no web calls, no guessing beyond the PDF text itself.
   const d = normDomain(domain);
   if (!d) return 0;
 
@@ -68,35 +74,28 @@ function extractWindowScore(textLower, domain) {
 
   let score = 0;
 
-  // Strong cues
   const strong = [
     "defendant",
     "defendants",
     "website",
-    "site",
     "web site",
+    "site",
     "online",
     "public accommodation",
-    "www.",
-    "http://",
-    "https://",
     "domain",
     "url",
+    "http://",
+    "https://",
+    "www.",
   ];
 
-  // Common complaint formatting cues
   const legalish = [
     "owns",
     "operates",
-    "operated",
     "maintains",
-    "maintained",
     "controls",
-    "controlled",
-    "offers",
-    "services",
     "goods",
-    "access",
+    "services",
     "accessible",
     "inaccessible",
     "screen reader",
@@ -109,17 +108,17 @@ function extractWindowScore(textLower, domain) {
   for (const s of strong) if (windowText.includes(s)) score += 8;
   for (const s of legalish) if (windowText.includes(s)) score += 2;
 
-  // Slight bonus if it appears early (caption / intro)
+  // bonus if early
   if (idx < 4000) score += 6;
-  if (idx < 12000) score += 3;
+  else if (idx < 12000) score += 3;
 
-  // Penalize if it looks like an email domain only (very weak, but helps)
+  // mild penalty for email-ish contexts
   if (windowText.includes("@") && !windowText.includes("http")) score -= 2;
 
   return score;
 }
 
-function autoPickDomains(extractedText, candidates) {
+function autoPickOneDomain(extractedText, candidates) {
   const text = String(extractedText || "");
   const textLower = text.toLowerCase();
 
@@ -130,43 +129,29 @@ function autoPickDomains(extractedText, candidates) {
   const uniqueDomains = uniq(domains);
 
   if (uniqueDomains.length === 0) {
-    return { picks: [], reason: "no_candidates" };
+    return { pick: null, reason: "no_candidates", scored: [] };
   }
 
   if (uniqueDomains.length === 1) {
-    return { picks: uniqueDomains, reason: "single_candidate" };
+    return { pick: uniqueDomains[0], reason: "single_candidate", scored: [{ domain: uniqueDomains[0], score: 999 }] };
   }
 
-  // Score each candidate
-  const scored = uniqueDomains.map((d) => {
-    const score = extractWindowScore(textLower, d);
-    return { domain: d, score };
-  });
-
+  const scored = uniqueDomains.map((d) => ({ domain: d, score: extractWindowScore(textLower, d) }));
   scored.sort((a, b) => b.score - a.score);
 
   const top = scored[0];
   const second = scored[1];
 
-  // Confidence rule (deterministic):
-  // - top score must be >= 10
-  // - and beat second by >= 4, OR second score < 10
-  const confident =
-    top.score >= 10 && (top.score - second.score >= 4 || second.score < 10);
+  // Deterministic confidence gate:
+  // - top >= 10
+  // - and (top-second >= 6 OR second < 10)
+  const confident = top.score >= 10 && (top.score - second.score >= 6 || second.score < 10);
 
   if (!confident) {
-    return {
-      picks: [],
-      reason: "low_confidence",
-      scored,
-    };
+    return { pick: null, reason: "low_confidence", scored };
   }
 
-  return {
-    picks: [top.domain],
-    reason: "scored_pick",
-    scored,
-  };
+  return { pick: top.domain, reason: "scored_pick", scored };
 }
 
 function main() {
@@ -182,24 +167,24 @@ function main() {
   const extractor = path.join(process.cwd(), "tools", "intake", "intake_extract.js");
   if (!fs.existsSync(extractor)) die(`Missing extractor: ${extractor}`);
 
-  // Step 1: run extractor to produce extracted_text.txt and candidates.json
-  const r = spawnSync(process.execPath, [extractor, "--pdf", pdfPath, "--out", outDir], {
-    stdio: "inherit",
-  });
+  // Run extractor
+  const r = spawnSync(process.execPath, [extractor, "--pdf", pdfPath, "--out", outDir], { stdio: "inherit" });
   if (r.status !== 0) process.exit(r.status || 1);
 
   const candidatesPath = path.join(outDir, "candidates.json");
   const extractedTextPath = path.join(outDir, "extracted_text.txt");
+  const flatPath = path.join(outDir, "candidates_flat.txt");
 
   if (!fs.existsSync(candidatesPath)) die(`Missing candidates.json: ${candidatesPath}`);
   if (!fs.existsSync(extractedTextPath)) die(`Missing extracted_text.txt: ${extractedTextPath}`);
 
   const extracted = fs.readFileSync(extractedTextPath, "utf8");
-  if (extracted.trim().length < minChars) {
+  const extractedTrim = extracted.trim();
+  if (extractedTrim.length < minChars) {
     die(
       [
-        "Extracted complaint text is too short, refusing to write complaint.txt.",
-        `chars=${extracted.trim().length}, min=${minChars}`,
+        "Extracted complaint text is too short, refusing to proceed.",
+        `chars=${extractedTrim.length}, min=${minChars}`,
         `source=${extractedTextPath}`,
       ].join("\n")
     );
@@ -213,68 +198,76 @@ function main() {
   const targetsOut = path.join(outDir, "targets.txt");
   const summaryOut = path.join(outDir, "INTAKE_SUMMARY.txt");
 
-  let selected = [];
+  let selected = null;
   let selectionMode = "auto";
+  let autoMeta = null;
 
-  // Override path: if selected_targets.txt exists and has content, use it
+  // If override exists, it MUST contain exactly one domain
   if (fs.existsSync(selectedPath)) {
     const lines = readLines(selectedPath).map(normDomain);
     if (lines.length > 0) {
+      if (lines.length !== 1) {
+        die(
+          [
+            "selected_targets.txt must contain EXACTLY ONE domain (one defendant, one domain).",
+            `found=${lines.length}`,
+            `path=${selectedPath}`,
+          ].join("\n")
+        );
+      }
       selectionMode = "human_override";
-      selected = lines;
+      selected = lines[0];
     }
   }
 
-  // Auto path: if no override, auto-pick
-  let autoMeta = null;
-  if (selected.length === 0) {
-    autoMeta = autoPickDomains(extracted, candidates);
-    if (!autoMeta.picks.length) {
-      const scored = autoMeta.scored
-        ? autoMeta.scored.map((x) => `  - ${x.domain} (score=${x.score})`).join("\n")
-        : "  (no scores)";
-
+  // Auto pick if no override
+  if (!selected) {
+    autoMeta = autoPickOneDomain(extracted, candidates);
+    if (!autoMeta.pick) {
+      const scoredLines = (autoMeta.scored || []).map((x) => `- ${x.domain} score=${x.score}`).join("\n");
       die(
         [
           "Auto-pick could not reach confidence, refusing to proceed.",
           `reason=${autoMeta.reason}`,
           "",
-          "Fix options (pick ONE):",
-          `1) Create ${selectedPath} with ONE domain per line, chosen from candidates_flat.txt`,
-          "2) Improve candidates extraction or complaint parsing rules",
+          "Because your rule is ONE defendant, ONE domain, this must be resolved explicitly.",
+          "In the future UI this becomes a one-click confirmation, for now the file is the lock.",
           "",
-          "Scored candidates:",
-          scored,
+          `Create ${selectedPath} with EXACTLY ONE line, chosen from: ${flatPath}`,
+          "",
+          "scoreboard:",
+          scoredLines || "(no scores)",
         ].join("\n")
       );
     }
-
-    selected = autoMeta.picks;
+    selected = autoMeta.pick;
     selectionMode = `auto:${autoMeta.reason}`;
 
-    // Write the selected_targets.txt so there is always an auditable record
-    fs.writeFileSync(selectedPath, selected.join("\n") + "\n", { encoding: "utf8" });
+    // Always write selected_targets.txt for auditability
+    fs.writeFileSync(selectedPath, selected + "\n", { encoding: "utf8" });
   }
 
-  // Validate selected against candidates
-  const unknown = selected.filter((s) => !candidateSet.has(normDomain(s)));
-  if (unknown.length) {
+  // Validate against candidates
+  if (!candidateSet.has(normDomain(selected))) {
     die(
       [
-        "selected_targets contains domains not present in candidates.json.",
-        "Unknown:",
-        ...unknown.map((x) => `  - ${x}`),
+        "Selected domain is not present in candidates.json.",
+        `selected=${selected}`,
+        `path=${selectedPath}`,
         "",
-        `Fix ${selectedPath} so each line matches a candidate domain exactly.`,
+        "Fix candidates extraction or provide a corrected selected_targets.txt chosen from candidates_flat.txt.",
       ].join("\n")
     );
   }
 
-  // Emit downstream inputs
-  fs.writeFileSync(complaintOut, extracted, { encoding: "utf8" });
-  fs.writeFileSync(targetsOut, selected.map(normDomain).join("\n") + "\n", { encoding: "utf8" });
+  // Hard guard: never empty targets
+  if (!selected || !normDomain(selected)) die("No target selected, refusing to write targets.txt.");
 
-  // Summary file (always non-empty, no blank tabs confusion)
+  // Emit downstream
+  fs.writeFileSync(complaintOut, extracted, { encoding: "utf8" });
+  fs.writeFileSync(targetsOut, normDomain(selected) + "\n", { encoding: "utf8" });
+
+  // Summary (always non-empty)
   const summaryLines = [
     "ACCESS FORENSICS INTAKE SUMMARY",
     `generated_utc: ${new Date().toISOString()}`,
@@ -284,17 +277,17 @@ function main() {
     `out_dir: ${path.resolve(outDir)}`,
     `extracted_text: ${path.resolve(extractedTextPath)}`,
     `candidates_json: ${path.resolve(candidatesPath)}`,
-    `candidates_flat: ${path.resolve(path.join(outDir, "candidates_flat.txt"))}`,
+    `candidates_flat: ${path.resolve(flatPath)}`,
     `selected_targets: ${path.resolve(selectedPath)}`,
     `complaint_out: ${path.resolve(complaintOut)}`,
     `targets_out: ${path.resolve(targetsOut)}`,
     "",
-    "selected domains:",
-    ...selected.map((d) => `- ${normDomain(d)}`),
+    "selected domain:",
+    `- ${normDomain(selected)}`,
     "",
   ];
 
-  if (autoMeta && autoMeta.scored) {
+  if (autoMeta && autoMeta.scored && autoMeta.scored.length) {
     summaryLines.push("scoreboard:");
     for (const s of autoMeta.scored) summaryLines.push(`- ${s.domain} score=${s.score}`);
     summaryLines.push("");
@@ -303,7 +296,7 @@ function main() {
   fs.writeFileSync(summaryOut, summaryLines.join("\n"), { encoding: "utf8" });
 
   console.log("OK: prepared complaint:", complaintOut);
-  console.log("OK: prepared targets  :", targetsOut);
+  console.log("OK: prepared target   :", targetsOut);
   console.log("OK: summary           :", summaryOut);
   console.log("READY: wire complaint.txt + targets.txt into your pipeline runner next.");
 }
