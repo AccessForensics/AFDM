@@ -11,8 +11,8 @@
 const fs = require("fs");
 const path = require("path");
 
-// pdfjs-dist v4 ships legacy build here:
-const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.mjs");
+// pdfjs-dist v3 legacy CJS build:
+const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 
 function die(msg) {
   console.error("ERROR:", msg);
@@ -95,7 +95,7 @@ async function extractPdfPerPage(pdfPath) {
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    const strings = content.items.map(it => (it && it.str ? it.str : "")).filter(Boolean);
+    const strings = content.items.map((it) => (it && it.str ? it.str : "")).filter(Boolean);
     const text = strings.join(" ").replace(/\s+/g, " ").trim();
     pages.push({ page: i, text });
   }
@@ -174,11 +174,11 @@ async function main() {
   fs.writeFileSync(candidatesPath, JSON.stringify(candidates, null, 2), { encoding: "utf8" });
 
   const flatPath = path.join(outDir, "candidates_flat.txt");
-  fs.writeFileSync(flatPath, domains.map(d => d.domain).join("\n") + (domains.length ? "\n" : ""), { encoding: "utf8" });
+  fs.writeFileSync(flatPath, domains.map((d) => d.domain).join("\n") + (domains.length ? "\n" : ""), { encoding: "utf8" });
 
   console.log("OK: extracted :", extractedTextPath);
   console.log("OK: candidates:", candidatesPath);
   console.log("OK: flat list :", flatPath);
 }
 
-main().catch(err => die(err && err.stack ? err.stack : String(err)));
+main().catch((err) => die(err && err.stack ? err.stack : String(err)));
