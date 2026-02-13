@@ -14,15 +14,19 @@ const path = require("path");
 // pdfjs-dist v3 legacy CJS build:
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 
-// SUPPRESS_PDFJS_CANVAS_WARNINGS
-// We only extract text, we do not render pages. pdfjs may warn about missing canvas polyfills.
+// SUPPRESS_PDFJS_NOISE
+// We only extract text, we do not render pages. pdfjs may warn about missing canvas polyfills and font baseUrl.
 // Keep stderr readable for operators.
 const _warn = console.warn;
 console.warn = (...args) => {
   const msg = String(args && args[0] ? args[0] : "");
-  if (msg.includes("Cannot polyfill `DOMMatrix`") || msg.includes("Cannot polyfill `Path2D`")) return;
+  if (msg.includes("Cannot polyfill `DOMMatrix`")) return;
+  if (msg.includes("Cannot polyfill `Path2D`")) return;
+  if (msg.includes("fetchStandardFontData: failed to fetch file")) return;
   _warn(...args);
-};function die(msg) {
+};
+
+function die(msg) {
   console.error("ERROR:", msg);
   process.exit(1);
 }
@@ -49,6 +53,7 @@ function normalizeCandidate(raw) {
   if (!raw) return null;
   let s = String(raw).trim();
 
+  // strip trailing punctuation
   s = s.replace(/[)\],.;:'"!?]+$/g, "");
 
   if (/^https?:\/\//i.test(s)) {
@@ -75,6 +80,22 @@ function makeSnippet(text, start, end, radius = 80) {
   return text.slice(a, b).replace(/\s+/g, " ").trim();
 }
 
+// If PDF extraction split a domain into: "<letter> <rest-of-domain>"
+// stitch it back deterministically, ex: "f renchconnection.com" -> "frenchconnection.com"
+function maybeStitchLeadingLetter(pageText, raw, startIndex) {
+  if (!pageText || !raw || typeof startIndex !== "number") return null;
+  if (startIndex < 2) return null;
+
+  const prev2 = pageText.slice(startIndex - 2, startIndex); // like "f "
+  if (!/^[a-z]\s$/i.test(prev2)) return null;
+
+  const stitched = (prev2[0] + raw).trim();
+  // only accept if the stitched token is a plausible domain
+  if (!/^(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(stitched)) return null;
+
+  return { raw: stitched, start: startIndex - 2 };
+}
+
 function extractMatches(pageText) {
   const out = [];
 
@@ -87,11 +108,24 @@ function extractMatches(pageText) {
   }
 
   while ((m = domRe.exec(pageText)) !== null) {
-    const raw = m[0];
-    const prev = m.index > 0 ? pageText[m.index - 1] : "";
-    const next = m.index + raw.length < pageText.length ? pageText[m.index + raw.length] : "";
+    let raw = m[0];
+    let start = m.index;
+    let end = m.index + raw.length;
+
+    // skip emails
+    const prev = start > 0 ? pageText[start - 1] : "";
+    const next = end < pageText.length ? pageText[end] : "";
     if (prev === "@" || next === "@") continue;
-    out.push({ raw, start: m.index, end: m.index + raw.length, kind: "domain" });
+
+    // stitch single-letter prefix if present
+    const stitched = maybeStitchLeadingLetter(pageText, raw, start);
+    if (stitched) {
+      raw = stitched.raw;
+      start = stitched.start;
+      end = start + raw.length;
+    }
+
+    out.push({ raw, start, end, kind: "domain" });
   }
 
   return out;
@@ -99,7 +133,12 @@ function extractMatches(pageText) {
 
 async function extractPdfPerPage(pdfPath) {
   const data = readFileBytes(pdfPath);
-  const doc = await pdfjsLib.getDocument({ data }).promise;
+  const doc = await pdfjsLib.getDocument({
+    data,
+    // silence font baseUrl warnings in Node, we do not render
+    disableFontFace: true,
+    useSystemFonts: true,
+  }).promise;
 
   const pages = [];
   for (let i = 1; i <= doc.numPages; i++) {
@@ -192,4 +231,3 @@ async function main() {
 }
 
 main().catch((err) => die(err && err.stack ? err.stack : String(err)));
-
