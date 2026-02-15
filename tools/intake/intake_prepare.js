@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Intake Prepare (v1.1) [ONE DEFENDANT, ONE DOMAIN]
  *
  * Contract rules:
@@ -21,6 +21,49 @@
 
 const fs = require("fs");
 const path = require("path");
+const AFI_PURGE_MARKER = "AF_PURGE_V2_ROBUST";
+const AFI_DEBUG_ARTIFACTS = process.env.AF_INTAKE_DEBUG_ARTIFACTS === "1";
+
+// Helper: Parse --out argument directly from argv to avoid scope issues
+function afI_getOutDirFromArgv() {
+  const argv = process.argv || [];
+  const idx = argv.indexOf("--out");
+  if (idx >= 0 && argv[idx + 1]) return argv[idx + 1];
+  const kv = argv.find(a => typeof a === "string" && a.startsWith("--out="));
+  if (kv) return kv.slice(6);
+  return null;
+}
+
+// Helper: Safely purge extracted_text.txt
+function afI_purgeExtractedText() {
+  if (AFI_DEBUG_ARTIFACTS) return;
+  const outDir = afI_getOutDirFromArgv();
+  if (!outDir) return;
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const extractedPath = path.join(outDir, "extracted_text.txt");
+    if (fs.existsSync(extractedPath)) {
+      fs.unlinkSync(extractedPath); 
+      // console.log("Debug: Purged extracted_text.txt"); // Uncomment to see it happen
+    }
+  } catch (e) {}
+}
+
+// Hook into all exit paths
+process.once("exit", afI_purgeExtractedText);
+process.once("SIGINT", () => { afI_purgeExtractedText(); process.exit(130); });
+process.once("SIGTERM", () => { afI_purgeExtractedText(); process.exit(143); });
+process.once("uncaughtException", (err) => { 
+  console.error("Uncaught:", err);
+  afI_purgeExtractedText(); 
+  process.exit(1); 
+});
+process.once("unhandledRejection", (reason) => { 
+  console.error("Unhandled:", reason);
+  afI_purgeExtractedText(); 
+  process.exit(1); 
+});
 const { spawnSync } = require("child_process");
 
 function die(msg) {
