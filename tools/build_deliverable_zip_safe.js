@@ -107,6 +107,12 @@ function safeSpawnOut(cmd, args, opts) {
   } catch { return { ok: false, out: "", how: (opts && opts.how) || "" }; }
 }
 
+function npmFromUserAgent() {
+  const ua = String(process.env.npm_config_user_agent || "");
+  const m = ua.match(/\bnpm\/([0-9]+\.[0-9]+\.[0-9]+)/i);
+  return m ? String(m[1]) : "";
+}
+
 function safeNpmVersion() {
   const candidates = process.platform === "win32" ? ["npm.cmd", "npm"] : ["npm"];
   for (const c of candidates) {
@@ -119,6 +125,12 @@ function safeNpmVersion() {
   return { version: "(unknown)", resolvedBy: "(unknown)" };
 }
 
+function detectNpmVersion() {
+  const fromUA = npmFromUserAgent();
+  if (fromUA) return { version: fromUA, resolvedBy: "npm_config_user_agent" };
+  return safeNpmVersion();
+}
+
 function parseBundlePrereqsFromVerifyOutput(text) {
   const lines = String(text || "").split(/\r?\n/);
   let inPrereqs = false;
@@ -126,11 +138,13 @@ function parseBundlePrereqsFromVerifyOutput(text) {
   for (const ln of lines) {
     const s = ln.trim();
     if (!s) continue;
-    if (s.toLowerCase().includes("prerequisite commit")) { inPrereqs = true; continue; }
+    const low = s.toLowerCase();
+    if (low.includes("prerequisite commit")) { inPrereqs = true; continue; }
+    if (low.includes("requires this prerequisite")) { inPrereqs = true; continue; }
     if (inPrereqs) {
       const m = s.match(/\b[0-9a-f]{40}\b/i);
       if (m) prereqs.push(m[0].toLowerCase());
-      else if (s.toLowerCase().includes("bundle contains") || s.toLowerCase().includes("the bundle records")) inPrereqs = false;
+      else if (low.includes("bundle contains") || low.includes("the bundle records")) inPrereqs = false;
     }
   }
   return prereqs;
@@ -198,7 +212,7 @@ function verifyToolingBundleOrFail(headCommit, toolingBundlePath, lines) {
 
   const heads = git(["bundle", "list-heads", abs]);
   const headsText = (String(heads.stdout || "") + "\n" + String(heads.stderr || "")).trim();
-  const containsHead = headsText.includes(headCommit);
+  const containsHead = new RegExp(`(^|\\s)${headCommit}(\\s|$)`, "m").test(headsText);
   lines.push(`tooling_bundle_contains_head_commit: ${containsHead ? "YES" : "NO"}`);
   if (!containsHead) {
     lines.push("status: TOOLING_BUNDLE_HEAD_MISMATCH_REFUSED");
@@ -214,8 +228,8 @@ function copyToolingBundleIntoPacket(caseRoot, toolingAbs) {
   const deliverableDir = path.join(caseRoot, "Deliverable_Packet");
   const destName = "AF_TOOLING.bundle";
   const destAbs = path.join(deliverableDir, destName);
-  try { fs.copyFileSync(toolingAbs, destAbs); return { copied: true, name: destName, abs: destAbs }; }
-  catch { return { copied: false, name: destName, abs: destAbs }; }
+  fs.copyFileSync(toolingAbs, destAbs);
+  return { copied: true, name: destName, abs: destAbs };
 }
 
 function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePath) {
@@ -224,12 +238,21 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
   const allowHeadMismatch = String(process.env.AF_ALLOW_HEAD_MISMATCH_BUILDER || "").trim() === "1";
   const allowDirtyRepo = String(process.env.AF_ALLOW_DIRTY_REPO || "").trim() === "1";
   const allowMissingLockfile = String(process.env.AF_ALLOW_MISSING_LOCKFILE || "").trim() === "1";
+  const allowUnknownNpm = String(process.env.AF_ALLOW_UNKNOWN_NPM || "").trim() === "1";
 
   const headCommit = gitLine(["rev-parse", "HEAD"]) || "(unknown)";
   const branchName = gitLine(["rev-parse", "--abbrev-ref", "HEAD"]) || "(unknown)";
   const gitVersion = gitLine(["--version"]) || "(unknown)";
   const nodeVersion = process.version || "(unknown)";
-  const npm = safeNpmVersion();
+
+  const npmUA = String(process.env.npm_config_user_agent || "");
+  const npm = detectNpmVersion();
+  if (npm.version === "(unknown)" && !allowUnknownNpm) {
+    const err = new Error("[FAIL] npm_version could not be resolved. Ensure npm is on PATH. Override (non-final only): AF_ALLOW_UNKNOWN_NPM=1");
+    err.name = "NPM_VERSION_UNKNOWN_REFUSED";
+    throw err;
+  }
+
   const playwrightVersion = safeSpawnOut(process.execPath, ["-p", "(()=>{try{return require('playwright/package.json').version}catch(e){return '(unknown)'}})()"], { shell: false, how: "node -p" });
   const playwrightV = (playwrightVersion.ok && playwrightVersion.out) ? playwrightVersion.out : "(unknown)";
 
@@ -263,12 +286,14 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
 
   let toolingBundleName = "(none)";
   let toolingBundleSha256 = "(none)";
+  let toolingBundleAbs = "(none)";
   if (toolingBundlePath) {
     try {
       const abs = path.resolve(toolingBundlePath);
+      toolingBundleAbs = abs;
       toolingBundleName = path.basename(abs);
       toolingBundleSha256 = fs.existsSync(abs) ? fileSha256(abs) : "(missing)";
-    } catch { toolingBundleName = "(error)"; toolingBundleSha256 = "(error)"; }
+    } catch { toolingBundleName = "(error)"; toolingBundleSha256 = "(error)"; toolingBundleAbs = "(error)"; }
   }
 
   const inIndex = !!idxOid;
@@ -281,6 +306,7 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
     `branch_name: ${branchName}`,
     `git_version: ${gitVersion}`,
     `node_version: ${nodeVersion}`,
+    `npm_config_user_agent: ${npmUA || "(none)"}`,
     `npm_version: ${npm.version}`,
     `npm_version_resolved_by: ${npm.resolvedBy}`,
     `playwright_version: ${playwrightV}`,
@@ -314,6 +340,7 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
     `repo_modified_count: ${repoState.modified}`,
     `repo_untracked_count: ${repoState.untracked}`,
 
+    `tooling_bundle_path_abs: ${toolingBundleAbs}`,
     `tooling_bundle_filename: ${toolingBundleName}`,
     `tooling_bundle_sha256: ${toolingBundleSha256}`
   ];
@@ -346,15 +373,62 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
     throw err;
   }
 
+  if (!(gHead && gIdx && gWt && gHead === gIdx && gWt === gHead)) {
+    lines.push("status: GUARD_NOT_COMMITTED_REFUSED");
+    lines.push("policy: REFUSED (deliverable_guard.js must match HEAD and index)");
+    writeNote(caseRoot, lines);
+    const err = new Error("[FAIL] deliverable_guard.js does not match HEAD and index. Commit guard or restore it to HEAD.");
+    err.name = "GUARD_NOT_COMMITTED_REFUSED";
+    throw err;
+  }
+
+  if (lockExists && !(lockHead && lockIdx && lockWt && lockHead === lockIdx && lockWt === lockHead)) {
+    lines.push("status: LOCKFILE_NOT_COMMITTED_REFUSED");
+    lines.push("policy: REFUSED (package-lock.json must match HEAD and index)");
+    writeNote(caseRoot, lines);
+    const err = new Error("[FAIL] package-lock.json does not match HEAD and index. Commit lockfile or restore it to HEAD.");
+    err.name = "LOCKFILE_NOT_COMMITTED_REFUSED";
+    throw err;
+  }
+
   let toolingVerify;
   try { toolingVerify = verifyToolingBundleOrFail(headCommit, toolingBundlePath, lines); }
   catch (e) { writeNote(caseRoot, lines); throw e; }
 
-  const copied = toolingVerify && toolingVerify.abs ? copyToolingBundleIntoPacket(caseRoot, toolingVerify.abs) : { copied: false, name: "(none)", abs: "" };
+  let copied;
+  try {
+    copied = toolingVerify && toolingVerify.abs ? copyToolingBundleIntoPacket(caseRoot, toolingVerify.abs) : { copied: false, name: "(none)", abs: "" };
+  } catch (e) {
+    lines.push("tooling_bundle_copied_into_packet: NO");
+    lines.push("status: TOOLING_BUNDLE_COPY_FAILED");
+    writeNote(caseRoot, lines);
+    const err = new Error("[FAIL] Tooling bundle copy into packet failed.");
+    err.name = "TOOLING_BUNDLE_COPY_FAILED";
+    throw err;
+  }
+
   lines.push(`tooling_bundle_copied_into_packet: ${copied.copied ? "YES" : "NO"}`);
   lines.push(`tooling_bundle_packet_name: ${copied.name || "(none)"}`);
-  if (copied.copied && copied.abs && fs.existsSync(copied.abs)) lines.push(`tooling_bundle_packet_sha256: ${fileSha256(copied.abs)}`);
-  else lines.push("tooling_bundle_packet_sha256: (none)");
+
+  if (!copied.copied || !copied.abs || !fs.existsSync(copied.abs)) {
+    lines.push("tooling_bundle_packet_sha256: (none)");
+    lines.push("status: TOOLING_BUNDLE_COPY_FAILED");
+    writeNote(caseRoot, lines);
+    const err = new Error("[FAIL] Tooling bundle was required but is not present in packet after copy.");
+    err.name = "TOOLING_BUNDLE_COPY_FAILED";
+    throw err;
+  }
+
+  const packetSha = fileSha256(copied.abs).toLowerCase();
+  const srcSha = String(toolingBundleSha256 || "").toLowerCase();
+  lines.push(`tooling_bundle_packet_sha256: ${packetSha}`);
+  if (srcSha && srcSha !== "(missing)" && srcSha !== "(none)" && packetSha !== srcSha) {
+    lines.push("status: TOOLING_BUNDLE_COPY_HASH_MISMATCH");
+    writeNote(caseRoot, lines);
+    const err = new Error("[FAIL] Tooling bundle copy hash mismatch, packet differs from source.");
+    err.name = "TOOLING_BUNDLE_COPY_HASH_MISMATCH";
+    throw err;
+  }
 
   if (inHead && inIndex && wtOid && headOid && idxOid && wtOid === headOid && idxOid === headOid) {
     lines.push("status: COMMITTED_HEAD");
@@ -460,7 +534,7 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
 
   if (process.platform !== "win32") {
     if (allowNoZipVerify) return;
-    const err = new Error("[FAIL] ZIP verification requires Windows PowerShell. Refusing on non-win32. Override (non-final only): AF_ALLOW_NO_ZIP_VERIFY=1");
+    const err = new Error("[FAIL] ZIP verification requires Windows environment. Refusing on non-win32. Override (non-final only): AF_ALLOW_NO_ZIP_VERIFY=1");
     err.name = "ZIP_VERIFY_UNSUPPORTED_PLATFORM";
     throw err;
   }
@@ -483,15 +557,21 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
   const zipAbs = path.resolve(findZipOrFail(caseRoot, caseId));
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "af_zipcheck_"));
 
-  let extractedTooling = "";
-  let extractedNote = "";
   try {
     const psCmd = `Expand-Archive -LiteralPath ${psQuote(zipAbs)} -DestinationPath ${psQuote(tmpDir)} -Force`;
-    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psCmd], { encoding: "utf8", cwd: repoRoot() });
+    let r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psCmd], { encoding: "utf8", cwd: repoRoot() });
+
     if (!r || r.status !== 0) {
-      const err = new Error("[FAIL] Expand-Archive failed while verifying zip embeds tooling bundle.\n" + String((r && (r.stdout || "")) || "") + "\n" + String((r && (r.stderr || "")) || ""));
-      err.name = "ZIP_EXPAND_FAILED";
-      throw err;
+      const t = spawnSync("tar", ["-xf", zipAbs, "-C", tmpDir], { encoding: "utf8", cwd: repoRoot() });
+      if (!t || t.status !== 0) {
+        const err = new Error(
+          "[FAIL] ZIP extraction failed (Expand-Archive and tar fallback).\n" +
+          String((r && (r.stdout || "")) || "") + "\n" + String((r && (r.stderr || "")) || "") + "\n" +
+          String((t && (t.stdout || "")) || "") + "\n" + String((t && (t.stderr || "")) || "")
+        );
+        err.name = "ZIP_EXPAND_FAILED";
+        throw err;
+      }
     }
 
     function findFirstByName(root, filename) {
@@ -509,7 +589,7 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
       return best;
     }
 
-    extractedTooling = findFirstByName(tmpDir, "AF_TOOLING.bundle");
+    const extractedTooling = findFirstByName(tmpDir, "AF_TOOLING.bundle");
     if (!extractedTooling || !fs.existsSync(extractedTooling)) {
       const err = new Error("[FAIL] Zip does not contain AF_TOOLING.bundle.");
       err.name = "ZIP_MISSING_TOOLING_BUNDLE";
@@ -523,7 +603,7 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
       throw err;
     }
 
-    extractedNote = findFirstByName(tmpDir, "BUILDER_TRACKING_NOTE.txt");
+    const extractedNote = findFirstByName(tmpDir, "BUILDER_TRACKING_NOTE.txt");
     if (!extractedNote || !fs.existsSync(extractedNote)) {
       const err = new Error("[FAIL] Zip does not contain BUILDER_TRACKING_NOTE.txt.");
       err.name = "ZIP_MISSING_NOTE";
