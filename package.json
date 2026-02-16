@@ -23,6 +23,8 @@
         "scan:sku-a:web": "npm run smoke:desktop",
         "scan:sku-b:web": "npm run smoke:desktop",
         "seal:packet": "node tools/seal_packet.js",
-        "smoke:desktop": "node engine/run_smoke_desktop.js manifests/smoke_desktop.json"
+        "smoke:desktop": "node engine/run_smoke_desktop.js manifests/smoke_desktop.json",
+        "deliver:zip": "node tools/build_deliverable_zip_safe.js",
+        "case:deliver": "node tools/run_case_dual_and_deliver.js"
     }
 }
