@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const crypto = require("crypto");
 const { spawnSync } = require("child_process");
 const { guardDeliverablePacket } = require("./deliverable_guard");
@@ -98,12 +99,24 @@ function parseCaseRoot(argv) {
   return "";
 }
 
-function safeSpawnVersion(cmd, args) {
+function safeSpawnOut(cmd, args, opts) {
   try {
-    const r = spawnSync(cmd, args, { encoding: "utf8", cwd: repoRoot() });
-    if (r && r.status === 0) return String(r.stdout || "").trim() || "(unknown)";
-    return "(unknown)";
-  } catch { return "(unknown)"; }
+    const r = spawnSync(cmd, args, { encoding: "utf8", cwd: repoRoot(), shell: !!(opts && opts.shell) });
+    if (r && r.status === 0) return { ok: true, out: String(r.stdout || "").trim(), how: (opts && opts.how) || "" };
+    return { ok: false, out: "", how: (opts && opts.how) || "" };
+  } catch { return { ok: false, out: "", how: (opts && opts.how) || "" }; }
+}
+
+function safeNpmVersion() {
+  const candidates = process.platform === "win32" ? ["npm.cmd", "npm"] : ["npm"];
+  for (const c of candidates) {
+    const a = safeSpawnOut(c, ["-v"], { shell: false, how: `${c} direct` });
+    if (a.ok && a.out) return { version: a.out, resolvedBy: a.how };
+
+    const b = safeSpawnOut(c, ["-v"], { shell: true, how: `${c} shell` });
+    if (b.ok && b.out) return { version: b.out, resolvedBy: b.how };
+  }
+  return { version: "(unknown)", resolvedBy: "(unknown)" };
 }
 
 function parseBundlePrereqsFromVerifyOutput(text) {
@@ -216,8 +229,9 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
   const branchName = gitLine(["rev-parse", "--abbrev-ref", "HEAD"]) || "(unknown)";
   const gitVersion = gitLine(["--version"]) || "(unknown)";
   const nodeVersion = process.version || "(unknown)";
-  const npmVersion = safeSpawnVersion("npm", ["-v"]);
-  const playwrightVersion = safeSpawnVersion(process.execPath, ["-p", "(()=>{try{return require('playwright/package.json').version}catch(e){return '(unknown)'}})()"]);
+  const npm = safeNpmVersion();
+  const playwrightVersion = safeSpawnOut(process.execPath, ["-p", "(()=>{try{return require('playwright/package.json').version}catch(e){return '(unknown)'}})()"], { shell: false, how: "node -p" });
+  const playwrightV = (playwrightVersion.ok && playwrightVersion.out) ? playwrightVersion.out : "(unknown)";
 
   const idxOid = indexBlobOid(builderRel);
   const headOid = headBlobOid(builderRel);
@@ -267,8 +281,9 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
     `branch_name: ${branchName}`,
     `git_version: ${gitVersion}`,
     `node_version: ${nodeVersion}`,
-    `npm_version: ${npmVersion}`,
-    `playwright_version: ${playwrightVersion}`,
+    `npm_version: ${npm.version}`,
+    `npm_version_resolved_by: ${npm.resolvedBy}`,
+    `playwright_version: ${playwrightV}`,
 
     `wrapper_rel: ${wrapperRel}`,
     `wrapper_file_sha256: ${wHash}`,
@@ -390,6 +405,147 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
   throw err;
 }
 
+function psQuote(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
+
+function findZipOrFail(caseRoot, caseId) {
+  const name = `Deliverable_Packet_${caseId}.zip`;
+  const candidates = [
+    path.join(repoRoot(), name),
+    path.join(caseRoot, name),
+    path.join(caseRoot, "Deliverable_Packet", name),
+  ];
+  for (const p of candidates) { if (fs.existsSync(p)) return p; }
+
+  const roots = [repoRoot(), caseRoot];
+  let best = "";
+  let bestMtime = 0;
+
+  function scanDir(dir, depth) {
+    if (depth < 0) return;
+    let items;
+    try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const it of items) {
+      const abs = path.join(dir, it.name);
+      if (it.isFile()) {
+        if (it.name === name || (it.name.toLowerCase().endsWith(".zip") && it.name.toLowerCase().includes(caseId.toLowerCase()))) {
+          try {
+            const st = fs.statSync(abs);
+            const mt = +st.mtime;
+            if (mt > bestMtime) { bestMtime = mt; best = abs; }
+          } catch { }
+        }
+      } else if (it.isDirectory()) {
+        scanDir(abs, depth - 1);
+      }
+    }
+  }
+
+  for (const r of roots) scanDir(r, 3);
+
+  if (!best) {
+    const err = new Error("[FAIL] Could not locate deliverable zip for caseId: " + caseId);
+    err.name = "ZIP_NOT_FOUND";
+    throw err;
+  }
+  return best;
+}
+
+function parseExpectedBundleHashFromNote(noteText) {
+  const m = String(noteText || "").match(/tooling_bundle_packet_sha256:\s*([0-9a-f]{64})/i);
+  return m ? String(m[1]).toLowerCase() : "";
+}
+
+function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
+  const allowNoZipVerify = String(process.env.AF_ALLOW_NO_ZIP_VERIFY || "").trim() === "1";
+
+  if (process.platform !== "win32") {
+    if (allowNoZipVerify) return;
+    const err = new Error("[FAIL] ZIP verification requires Windows PowerShell. Refusing on non-win32. Override (non-final only): AF_ALLOW_NO_ZIP_VERIFY=1");
+    err.name = "ZIP_VERIFY_UNSUPPORTED_PLATFORM";
+    throw err;
+  }
+
+  const deliverableDir = path.join(caseRoot, "Deliverable_Packet");
+  const notePath = path.join(deliverableDir, "BUILDER_TRACKING_NOTE.txt");
+  if (!fs.existsSync(notePath)) {
+    const err = new Error("[FAIL] Missing BUILDER_TRACKING_NOTE.txt, cannot verify zip embeds tooling bundle.");
+    err.name = "NOTE_MISSING";
+    throw err;
+  }
+  const note = fs.readFileSync(notePath, "utf8");
+  const expected = parseExpectedBundleHashFromNote(note);
+  if (!expected) {
+    const err = new Error("[FAIL] Note missing tooling_bundle_packet_sha256, cannot verify zip embeds tooling bundle.");
+    err.name = "NOTE_PARSE_FAILED";
+    throw err;
+  }
+
+  const zipAbs = path.resolve(findZipOrFail(caseRoot, caseId));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "af_zipcheck_"));
+
+  let extractedTooling = "";
+  let extractedNote = "";
+  try {
+    const psCmd = `Expand-Archive -LiteralPath ${psQuote(zipAbs)} -DestinationPath ${psQuote(tmpDir)} -Force`;
+    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psCmd], { encoding: "utf8", cwd: repoRoot() });
+    if (!r || r.status !== 0) {
+      const err = new Error("[FAIL] Expand-Archive failed while verifying zip embeds tooling bundle.\n" + String((r && (r.stdout || "")) || "") + "\n" + String((r && (r.stderr || "")) || ""));
+      err.name = "ZIP_EXPAND_FAILED";
+      throw err;
+    }
+
+    function findFirstByName(root, filename) {
+      let best = "";
+      function walk(d) {
+        let items;
+        try { items = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+        for (const it of items) {
+          const abs = path.join(d, it.name);
+          if (it.isFile() && it.name === filename) { best = abs; return; }
+          if (it.isDirectory()) { walk(abs); if (best) return; }
+        }
+      }
+      walk(root);
+      return best;
+    }
+
+    extractedTooling = findFirstByName(tmpDir, "AF_TOOLING.bundle");
+    if (!extractedTooling || !fs.existsSync(extractedTooling)) {
+      const err = new Error("[FAIL] Zip does not contain AF_TOOLING.bundle.");
+      err.name = "ZIP_MISSING_TOOLING_BUNDLE";
+      throw err;
+    }
+
+    const zipToolingSha = fileSha256(extractedTooling).toLowerCase();
+    if (zipToolingSha !== expected) {
+      const err = new Error(`[FAIL] Zip AF_TOOLING.bundle SHA mismatch. zip=${zipToolingSha} expected(note)=${expected}`);
+      err.name = "ZIP_TOOLING_HASH_MISMATCH";
+      throw err;
+    }
+
+    extractedNote = findFirstByName(tmpDir, "BUILDER_TRACKING_NOTE.txt");
+    if (!extractedNote || !fs.existsSync(extractedNote)) {
+      const err = new Error("[FAIL] Zip does not contain BUILDER_TRACKING_NOTE.txt.");
+      err.name = "ZIP_MISSING_NOTE";
+      throw err;
+    }
+
+    const noteSha = fileSha256(notePath).toLowerCase();
+    const zipNoteSha = fileSha256(extractedNote).toLowerCase();
+    if (zipNoteSha !== noteSha) {
+      const err = new Error(`[FAIL] Zip BUILDER_TRACKING_NOTE.txt SHA mismatch. zip=${zipNoteSha} packet=${noteSha}`);
+      err.name = "ZIP_NOTE_HASH_MISMATCH";
+      throw err;
+    }
+
+    console.log("OK: zip embeds AF_TOOLING.bundle, sha matches note");
+    console.log("OK: zip embeds BUILDER_TRACKING_NOTE.txt, sha matches packet");
+    console.log("OK: zip_path:", zipAbs);
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
+  }
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const caseRootArg = parseCaseRoot(argv);
@@ -408,7 +564,14 @@ function main() {
 
   const passThru = stripToolingBundleArgs(argv);
   const r = spawnSync(process.execPath, [builderAbs, ...passThru], { stdio: "inherit" });
-  process.exit(typeof r.status === "number" ? r.status : 1);
+  const code = (typeof r.status === "number") ? r.status : 1;
+
+  if (code === 0) {
+    try { verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId); }
+    catch (e) { console.error(String(e && e.message ? e.message : e)); process.exit(81); }
+  }
+
+  process.exit(code);
 }
 
 main();
