@@ -34,7 +34,6 @@ function indexBlobOid(repoRel) {
   return parts[1] || "";
 }
 function worktreeBlobOid(repoRel) { const r = git(["hash-object", "--", repoRel]); if (!gitOk(r)) return ""; return String(r.stdout || "").trim(); }
-function escapeRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\
 function writeNote("); }
 
 function sanitizeForCourtLine(line) {
@@ -675,5 +674,6 @@ function main() {
 }
 
 main();
+
 
 
