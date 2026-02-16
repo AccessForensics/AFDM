@@ -286,11 +286,9 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
 
   let toolingBundleName = "(none)";
   let toolingBundleSha256 = "(none)";
-  let toolingBundleAbs = "(none)";
   if (toolingBundlePath) {
     try {
       const abs = path.resolve(toolingBundlePath);
-      toolingBundleAbs = abs;
       toolingBundleName = path.basename(abs);
       toolingBundleSha256 = fs.existsSync(abs) ? fileSha256(abs) : "(missing)";
     } catch { toolingBundleName = "(error)"; toolingBundleSha256 = "(error)"; toolingBundleAbs = "(error)"; }
@@ -620,7 +618,7 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
 
     console.log("OK: zip embeds AF_TOOLING.bundle, sha matches note");
     console.log("OK: zip embeds BUILDER_TRACKING_NOTE.txt, sha matches packet");
-    console.log("OK: zip_path:", zipAbs);
+    console.log("OK: zip_name:", path.basename(zipAbs));
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { }
   }
@@ -655,3 +653,4 @@ function main() {
 }
 
 main();
+
