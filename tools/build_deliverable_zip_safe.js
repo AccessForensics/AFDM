@@ -65,6 +65,14 @@ function sanitizeForCourtLine(line) {
   return s;
 }
 function writeNote(caseRoot, lines) {
+  // AF_COURT_SANITIZE_V1
+  if (Array.isArray(lines)) {
+    const kill = ("tooling" + "_bundle" + "_path_abs").toLowerCase();
+    lines = lines
+      .filter(l => !String(l ?? "").toLowerCase().includes(kill))
+      .map(sanitizeForCourtLine);
+  }
+
   lines = Array.isArray(lines) ? lines.map(sanitizeForCourtLine) : lines;
 
   try {
@@ -682,5 +690,6 @@ function main() {
 }
 
 main();
+
 
 
