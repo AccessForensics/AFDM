@@ -34,15 +34,25 @@ function indexBlobOid(repoRel) {
   return parts[1] || "";
 }
 function worktreeBlobOid(repoRel) { const r = git(["hash-object", "--", repoRel]); if (!gitOk(r)) return ""; return String(r.stdout || "").trim(); }
-function writeNote("); }
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function sanitizeForCourtLine(line) {
   let s = String(line ?? "");
 
-  // Redact Windows user paths (drive and UNC style), also file:// paths
-  s = s.replace(/[A-Za-z]:\\Users\\[^\s]+/gi, "[REDACTED_PATH]");
-  s = s.replace(/\\Users\\[^\s]+/gi, "[REDACTED_PATH]");
-  s = s.replace(/file:\/\/\/[A-Za-z]:\/Users\/[^\s]+/gi, "file:///[REDACTED_PATH]");
+  // Redact user directory prefixes across OSes (minimum sufficient)
+  s = s.replace(/\\\\\?\\[A-Za-z]:\\Users\\[^\\\r\n]+/gi, "[REDACTED_USERDIR]");
+  s = s.replace(/[A-Za-z]:\\Users\\[^\\\r\n]+/gi, "[REDACTED_USERDIR]");
+  s = s.replace(/\\Users\\[^\\\r\n]+/gi, "[REDACTED_USERDIR]");
+  s = s.replace(/[A-Za-z]:\\Documents and Settings\\[^\\\r\n]+/gi, "[REDACTED_USERDIR]");
+  s = s.replace(/file:\/\/\/[A-Za-z]:\/Users\/[^\/\r\n]+/gi, "file:///[REDACTED_USERDIR]");
+
+  s = s.replace(/\/mnt\/[a-z]\/Users\/[^\/\r\n]+/gi, "/[REDACTED_USERDIR]");
+  s = s.replace(/\/Users\/[^\/\r\n]+/gi, "/[REDACTED_HOME]");
+  s = s.replace(/\/home\/[^\/\r\n]+/gi, "/[REDACTED_HOME]");
+  s = s.replace(/file:\/\/\/(Users|home)\/[^\/\r\n]+/gi, "file:///[REDACTED_HOME]");
 
   // Redact current OS username anywhere it appears as a token
   let uname = "";
@@ -55,9 +65,9 @@ function sanitizeForCourtLine(line) {
   return s;
 }
 function writeNote(caseRoot, lines) {
-  
   lines = Array.isArray(lines) ? lines.map(sanitizeForCourtLine) : lines;
-try {
+
+  try {
     const deliverableDir = path.join(caseRoot, "Deliverable_Packet");
     const outPath = path.join(deliverableDir, "BUILDER_TRACKING_NOTE.txt");
     fs.writeFileSync(outPath, lines.join("\n") + "\n", "utf8");
@@ -312,7 +322,6 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
       const abs = path.resolve(toolingBundlePath);
       toolingBundleName = path.basename(abs);
       toolingBundleSha256 = fs.existsSync(abs) ? fileSha256(abs) : "(missing)";
-    } catch { toolingBundleName = "(error)"; toolingBundleSha256 = "(error)"; toolingBundleAbs = "(error)"; }
   }
 
   const inIndex = !!idxOid;
@@ -359,7 +368,6 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
     `repo_modified_count: ${repoState.modified}`,
     `repo_untracked_count: ${repoState.untracked}`,
 
-    `tooling_bundle_path_abs: ${toolingBundleAbs}`,
     `tooling_bundle_filename: ${toolingBundleName}`,
     `tooling_bundle_sha256: ${toolingBundleSha256}`
   ];
@@ -674,6 +682,5 @@ function main() {
 }
 
 main();
-
 
 
