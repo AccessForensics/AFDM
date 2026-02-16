@@ -34,9 +34,31 @@ function indexBlobOid(repoRel) {
   return parts[1] || "";
 }
 function worktreeBlobOid(repoRel) { const r = git(["hash-object", "--", repoRel]); if (!gitOk(r)) return ""; return String(r.stdout || "").trim(); }
+function escapeRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\
+function writeNote("); }
 
+function sanitizeForCourtLine(line) {
+  let s = String(line ?? "");
+
+  // Redact Windows user paths (drive and UNC style), also file:// paths
+  s = s.replace(/[A-Za-z]:\\Users\\[^\s]+/gi, "[REDACTED_PATH]");
+  s = s.replace(/\\Users\\[^\s]+/gi, "[REDACTED_PATH]");
+  s = s.replace(/file:\/\/\/[A-Za-z]:\/Users\/[^\s]+/gi, "file:///[REDACTED_PATH]");
+
+  // Redact current OS username anywhere it appears as a token
+  let uname = "";
+  try { uname = (os.userInfo && os.userInfo().username) ? String(os.userInfo().username) : ""; } catch { uname = ""; }
+  if (uname) {
+    const re = new RegExp(`\\b${escapeRegex(uname)}\\b`, "gi");
+    s = s.replace(re, "[REDACTED_USERNAME]");
+  }
+
+  return s;
+}
 function writeNote(caseRoot, lines) {
-  try {
+  
+  lines = Array.isArray(lines) ? lines.map(sanitizeForCourtLine) : lines;
+try {
     const deliverableDir = path.join(caseRoot, "Deliverable_Packet");
     const outPath = path.join(deliverableDir, "BUILDER_TRACKING_NOTE.txt");
     fs.writeFileSync(outPath, lines.join("\n") + "\n", "utf8");
@@ -653,4 +675,5 @@ function main() {
 }
 
 main();
+
 
