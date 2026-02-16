@@ -18,3 +18,7 @@ _intake_demo/
 
 _intake_inbox/
 
+runs/
+tools/exiftool/
+package.json.bak_pre_patch_*
+C:/AF_TMP/
