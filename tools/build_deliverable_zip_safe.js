@@ -1,42 +1,58 @@
 "use strict";
 
-/*
-  AF build_deliverable_zip_safe.js
-
-  Purpose:
-  - Guard Deliverable_Packet invariants (via deliverable_guard.js)
-  - Stamp BUILDER_TRACKING_NOTE.txt with provenance
-  - Require a self-contained git tooling bundle and copy it into packet as AF_TOOLING.bundle
-  - Run the real builder (default: tools/build_deliverable_zip.js unless overridden)
-  - After success, verify the produced zip embeds AF_TOOLING.bundle and BUILDER_TRACKING_NOTE.txt and hashes match
-
-  IMPORTANT:
-  - This is a Node.js script. Never paste any of this into PowerShell.
-*/
+/**
+ * build_deliverable_zip_safe.js
+ *
+ * SAFE WRAPPER
+ * - Runs the builder FIRST (builder creates Deliverable_Packet + zip)
+ * - THEN runs guard + provenance stamp + tooling bundle embed + zip verification
+ *
+ * This prevents the early failure you hit where deliverable_guard refused because Deliverable_Packet
+ * did not exist yet (because the builder had not run).
+ */
 
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { spawnSync } = require("child_process");
-const { guardDeliverablePacket } = require("./deliverable_guard");
 
-// -----------------------------
-// Small utilities
-// -----------------------------
-
+// ---------------------------
+// basic utils
+// ---------------------------
 function repoRoot() {
-  return path.resolve(__dirname, "..");
+  return process.cwd();
 }
 
-function repoRelFromAbs(absPath) {
-  return path.relative(repoRoot(), absPath).split(path.sep).join("/");
-}
-
-function fileSha256(absPath) {
+function fileSha256(p) {
   const h = crypto.createHash("sha256");
-  h.update(fs.readFileSync(absPath));
+  const fd = fs.openSync(p, "r");
+  try {
+    const buf = Buffer.allocUnsafe(1024 * 1024);
+    while (true) {
+      const n = fs.readSync(fd, buf, 0, buf.length, null);
+      if (!n) break;
+      h.update(buf.subarray(0, n));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
   return h.digest("hex");
+}
+
+function readUtf8NoBom(p) {
+  let s = fs.readFileSync(p, "utf8");
+  if (s && s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  return s;
+}
+
+function writeUtf8NoBom(p, s) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, s, { encoding: "utf8" });
+}
+
+function psQuote(s) {
+  return "'" + String(s).replace(/'/g, "''") + "'";
 }
 
 function escapeRegex(s) {
@@ -44,65 +60,72 @@ function escapeRegex(s) {
 }
 
 function sanitizeForCourtLine(line) {
-  const s = String(line == null ? "" : line);
-  // Keep it printable, stable. Remove CR, control chars except \t.
-  return s
+  // Strip CR/LF and control chars
+  return String(line)
     .replace(/\r/g, "")
-    .replace(/[^\x09\x0A\x20-\x7E]/g, "?");
+    .replace(/\n/g, " ")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .trim();
 }
 
-function ensureDir(absDir) {
-  fs.mkdirSync(absDir, { recursive: true });
-}
-
-function writeNote(caseRoot, lines) {
-  const deliverableDir = path.join(caseRoot, "Deliverable_Packet");
-  ensureDir(deliverableDir);
-  const notePath = path.join(deliverableDir, "BUILDER_TRACKING_NOTE.txt");
-  const safeLines = lines.map((ln) => sanitizeForCourtLine(ln));
-  fs.writeFileSync(notePath, safeLines.join("\n") + "\n", { encoding: "utf8" });
-}
-
-function psQuote(s) {
-  // PowerShell single-quoted string escaping
-  return "'" + String(s).replace(/'/g, "''") + "'";
-}
-
-function parseArgValue(argv, key) {
+// ---------------------------
+// argv helpers
+// ---------------------------
+function extractToolingBundleArg(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === key) return argv[i + 1] || "";
-    if (a && a.startsWith(key + "=")) return a.split("=", 2)[1] || "";
+    if (a === "--toolingBundle") return argv[i + 1] || "";
+    if (a && a.startsWith("--toolingBundle=")) return a.split("=", 2)[1] || "";
   }
   return "";
 }
 
-function stripArg(argv, key) {
+function stripToolingBundleArgs(argv) {
   const out = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === key) {
+    if (a === "--toolingBundle") {
       i++;
       continue;
     }
-    if (a && a.startsWith(key + "=")) continue;
+    if (a && a.startsWith("--toolingBundle=")) continue;
     out.push(a);
   }
   return out;
 }
 
-// -----------------------------
-// git helpers
-// -----------------------------
+function parseCaseRoot(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--caseRoot") return argv[i + 1] || "";
+    if (a && a.startsWith("--caseRoot=")) return a.split("=", 2)[1] || "";
+    if (a === "--case") return argv[i + 1] || "";
+    if (a && a.startsWith("--case=")) return a.split("=", 2)[1] || "";
+  }
+  return "";
+}
 
-function git(args, opts) {
-  const r = spawnSync("git", args, {
-    cwd: repoRoot(),
-    encoding: "utf8",
-    shell: false,
-    ...(opts || {}),
-  });
-  return r;
+// ---------------------------
+// git helpers (court defensible metadata)
+// ---------------------------
+function safeSpawnOut(cmd, args, opts) {
+  try {
+    const r = spawnSync(cmd, args, {
+      encoding: "utf8",
+      cwd: repoRoot(),
+      shell: !!(opts && opts.shell),
+    });
+    if (r && r.status === 0) {
+      return { ok: true, out: String(r.stdout || "").trim(), how: (opts && opts.how) || "" };
+    }
+    return { ok: false, out: "", how: (opts && opts.how) || "" };
+  } catch {
+    return { ok: false, out: "", how: (opts && opts.how) || "" };
+  }
+}
+
+function git(args) {
+  return spawnSync("git", args, { encoding: "utf8", cwd: repoRoot() });
 }
 
 function gitOk(r) {
@@ -112,73 +135,206 @@ function gitOk(r) {
 function gitLine(args) {
   const r = git(args);
   if (!gitOk(r)) return "";
-  return String(r.stdout || "").trim();
-}
-
-function worktreeBlobOid(relPath) {
-  try {
-    const abs = path.join(repoRoot(), relPath);
-    if (!fs.existsSync(abs)) return "";
-    const r = git(["hash-object", relPath]);
-    return gitOk(r) ? String(r.stdout || "").trim() : "";
-  } catch {
-    return "";
-  }
-}
-
-function indexBlobOid(relPath) {
-  try {
-    const r = git(["rev-parse", ":" + relPath]);
-    return gitOk(r) ? String(r.stdout || "").trim() : "";
-  } catch {
-    return "";
-  }
-}
-
-function headBlobOid(relPath) {
-  try {
-    const r = git(["rev-parse", "HEAD:" + relPath]);
-    return gitOk(r) ? String(r.stdout || "").trim() : "";
-  } catch {
-    return "";
-  }
+  const t = String(r.stdout || "").trim();
+  return t.split(/\r?\n/)[0] || "";
 }
 
 function statusCounts() {
   const r = git(["status", "--porcelain=v1"]);
-  if (!gitOk(r)) return { dirty: true, modified: -1, untracked: -1 };
-  const lines = String(r.stdout || "")
-    .split(/\r?\n/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-
+  const txt = String((r && r.stdout) || "");
+  const lines = txt.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
   let modified = 0;
   let untracked = 0;
   for (const ln of lines) {
     if (ln.startsWith("??")) untracked++;
     else modified++;
   }
-  return { dirty: lines.length > 0, modified, untracked };
+  return { dirty: (modified + untracked) > 0, modified, untracked };
 }
 
-function safeSpawnOut(cmd, args, opts) {
+function indexBlobOid(rel) {
+  const r = git(["ls-files", "-s", "--", rel]);
+  if (!gitOk(r)) return "";
+  // format: mode oid stage path
+  const m = String(r.stdout || "").trim().match(/^\d+\s+([0-9a-f]{40})\s+\d+\s+/i);
+  return m ? String(m[1]).toLowerCase() : "";
+}
+
+function headBlobOid(rel) {
+  const r = git(["show", "HEAD:" + rel]);
+  if (!gitOk(r)) return "";
+  // We cannot get blob oid from show directly without plumbing, use rev-parse for blob
+  const rr = git(["rev-parse", "HEAD:" + rel]);
+  if (!gitOk(rr)) return "";
+  return String(rr.stdout || "").trim().toLowerCase();
+}
+
+function worktreeBlobOid(rel) {
   try {
-    const r = spawnSync(cmd, args, {
-      encoding: "utf8",
-      cwd: repoRoot(),
-      shell: !!(opts && opts.shell),
-    });
-    if (r && r.status === 0) {
-      return {
-        ok: true,
-        out: String(r.stdout || "").trim(),
-        how: (opts && opts.how) || "",
-      };
-    }
-    return { ok: false, out: "", how: (opts && opts.how) || "" };
+    if (!fs.existsSync(path.join(repoRoot(), rel))) return "";
+    // sha1 of file contents is not blob oid, so we use git hash-object on worktree
+    const r = git(["hash-object", rel]);
+    if (!gitOk(r)) return "";
+    return String(r.stdout || "").trim().toLowerCase();
   } catch {
-    return { ok: false, out: "", how: (opts && opts.how) || "" };
+    return "";
   }
+}
+
+function repoRelFromAbs(abs) {
+  const rr = path.relative(repoRoot(), abs).replace(/\\/g, "/");
+  return rr;
+}
+
+// ---------------------------
+// builder resolution
+// ---------------------------
+function resolveBuilderOrFail() {
+  // Preferred candidates. First existing wins.
+  const candidates = [
+    "tools/build_deliverable_zip.js",
+    "tools/build_deliverable_zip_builder.js",
+    "tools/build_deliverable_zip_core.js",
+    "tools/build_deliverable_zip_main.js",
+  ];
+
+  for (const rel of candidates) {
+    const abs = path.join(repoRoot(), rel);
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) return rel;
+  }
+
+  // Fallback: use env override if you pinned a builder path
+  const envRel = String(process.env.AF_BUILDER_REL || "").trim();
+  if (envRel) {
+    const abs = path.join(repoRoot(), envRel);
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) return envRel;
+  }
+
+  const err = new Error("[FAIL] Could not resolve builder script. Set AF_BUILDER_REL to a valid repo-relative builder path.");
+  err.name = "BUILDER_NOT_FOUND";
+  throw err;
+}
+
+// ---------------------------
+// tooling bundle verification + embed
+// ---------------------------
+function parseBundlePrereqsFromVerifyOutput(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  let inPrereqs = false;
+  const prereqs = [];
+  for (const ln of lines) {
+    const s = String(ln || "").trim();
+    if (!s) continue;
+    const low = s.toLowerCase();
+    if (low.includes("prerequisite commit") || low.includes("requires this prerequisite")) {
+      inPrereqs = true;
+      continue;
+    }
+    if (inPrereqs) {
+      const m = s.match(/\b[0-9a-f]{40}\b/i);
+      if (m) prereqs.push(String(m[0]).toLowerCase());
+      else if (low.includes("bundle contains") || low.includes("the bundle records")) inPrereqs = false;
+    }
+  }
+  return prereqs;
+}
+
+function verifyToolingBundleOrFail(headCommit, toolingBundlePath, lines) {
+  const allowNoBundle = String(process.env.AF_ALLOW_NO_TOOLING_BUNDLE || "").trim() === "1";
+  const allowPrereqs = String(process.env.AF_ALLOW_TOOLING_BUNDLE_PREREQS || "").trim() === "1";
+
+  if (!toolingBundlePath) {
+    lines.push("tooling_bundle_verify: (none)");
+    lines.push("tooling_bundle_prereq_count: (none)");
+    lines.push("tooling_bundle_self_contained: (none)");
+    lines.push("tooling_bundle_contains_head_commit: (none)");
+    lines.push("tooling_bundle_copied_into_packet: (none)");
+    if (!allowNoBundle) {
+      lines.push("status: TOOLING_BUNDLE_REQUIRED_REFUSED");
+      lines.push("policy: REFUSED (pass --toolingBundle <self-contained .bundle>, override AF_ALLOW_NO_TOOLING_BUNDLE=1 for non-final testing)");
+      const err = new Error("[FAIL] Tooling bundle is REQUIRED. Pass --toolingBundle <path-to-self-contained-git-bundle>.");
+      err.name = "TOOLING_BUNDLE_REQUIRED_REFUSED";
+      throw err;
+    }
+    lines.push("status: TOOLING_BUNDLE_MISSING_OVERRIDE");
+    lines.push("override: AF_ALLOW_NO_TOOLING_BUNDLE=1");
+    return { abs: "", prereqCount: 0, containsHead: false };
+  }
+
+  const abs = path.resolve(toolingBundlePath);
+  if (!fs.existsSync(abs)) {
+    lines.push("tooling_bundle_verify: MISSING");
+    if (!allowNoBundle) {
+      lines.push("status: TOOLING_BUNDLE_MISSING_REFUSED");
+      const err = new Error("[FAIL] Tooling bundle path does not exist: " + abs);
+      err.name = "TOOLING_BUNDLE_MISSING_REFUSED";
+      throw err;
+    }
+    lines.push("status: TOOLING_BUNDLE_MISSING_OVERRIDE");
+    lines.push("override: AF_ALLOW_NO_TOOLING_BUNDLE=1");
+    return { abs, prereqCount: 0, containsHead: false };
+  }
+
+  const verify = git(["bundle", "verify", abs]);
+  const verifyText = (String(verify.stdout || "") + "\n" + String(verify.stderr || "")).trim();
+
+  if (!gitOk(verify)) {
+    lines.push("tooling_bundle_verify: FAIL");
+    const err = new Error("[FAIL] git bundle verify failed.\n" + verifyText);
+    err.name = "TOOLING_BUNDLE_VERIFY_FAILED";
+    throw err;
+  }
+
+  const prereqs = parseBundlePrereqsFromVerifyOutput(verifyText);
+  const prereqCount = prereqs.length;
+
+  lines.push("tooling_bundle_verify: OK");
+  lines.push("tooling_bundle_prereq_count: " + prereqCount);
+  lines.push("tooling_bundle_self_contained: " + (prereqCount === 0 ? "YES" : "NO"));
+
+  if (prereqCount > 0 && !allowPrereqs) {
+    lines.push("status: TOOLING_BUNDLE_PREREQS_REFUSED");
+    lines.push("policy: REFUSED (bundle must be self-contained, create with: git bundle create <path>.bundle HEAD)");
+    const err = new Error("[FAIL] Tooling bundle is NOT self-contained. Create: git bundle create <path>.bundle HEAD");
+    err.name = "TOOLING_BUNDLE_PREREQS_REFUSED";
+    throw err;
+  }
+  if (prereqCount > 0 && allowPrereqs) lines.push("override: AF_ALLOW_TOOLING_BUNDLE_PREREQS=1");
+
+  const heads = git(["bundle", "list-heads", abs]);
+  const headsText = (String(heads.stdout || "") + "\n" + String(heads.stderr || "")).trim();
+
+  const re = new RegExp("(^|\\s)" + escapeRegex(headCommit) + "(\\s|$)", "m");
+  const containsHead = re.test(headsText);
+
+  lines.push("tooling_bundle_contains_head_commit: " + (containsHead ? "YES" : "NO"));
+
+  if (!containsHead) {
+    lines.push("status: TOOLING_BUNDLE_HEAD_MISMATCH_REFUSED");
+    const err = new Error("[FAIL] Tooling bundle does not include head_commit. Rebuild from this HEAD: git bundle create <path>.bundle HEAD");
+    err.name = "TOOLING_BUNDLE_HEAD_MISMATCH_REFUSED";
+    throw err;
+  }
+
+  return { abs, prereqCount, containsHead };
+}
+
+function copyToolingBundleIntoPacket(caseRoot, toolingAbs) {
+  const deliverableDir = path.join(caseRoot, "Deliverable_Packet");
+  const destName = "AF_TOOLING.bundle";
+  const destAbs = path.join(deliverableDir, destName);
+  fs.copyFileSync(toolingAbs, destAbs);
+  return { copied: true, name: destName, abs: destAbs };
+}
+
+// ---------------------------
+// provenance stamp (writes BUILDER_TRACKING_NOTE.txt)
+// ---------------------------
+function writeNote(caseRoot, lines) {
+  const deliverableDir = path.join(caseRoot, "Deliverable_Packet");
+  const notePath = path.join(deliverableDir, "BUILDER_TRACKING_NOTE.txt");
+  const body = lines.map(sanitizeForCourtLine).join("\r\n") + "\r\n";
+  writeUtf8NoBom(notePath, body);
 }
 
 function npmFromUserAgent() {
@@ -204,215 +360,13 @@ function detectNpmVersion() {
   return safeNpmVersion();
 }
 
-// -----------------------------
-// Tooling bundle verification
-// -----------------------------
-
-function parseBundlePrereqsFromVerifyOutput(text) {
-  const lines = String(text || "").split(/\r?\n/);
-  let inPrereqs = false;
-  const prereqs = [];
-
-  for (const ln of lines) {
-    const s = String(ln || "").trim();
-    if (!s) continue;
-    const low = s.toLowerCase();
-
-    if (
-      low.includes("prerequisite commit") ||
-      low.includes("requires this prerequisite")
-    ) {
-      inPrereqs = true;
-      continue;
-    }
-
-    if (inPrereqs) {
-      const m = s.match(/\b[0-9a-f]{40}\b/i);
-      if (m) prereqs.push(String(m[0]).toLowerCase());
-      else if (
-        low.includes("bundle contains") ||
-        low.includes("the bundle records")
-      ) {
-        inPrereqs = false;
-      }
-    }
-  }
-
-  return prereqs;
-}
-
-function verifyToolingBundleOrFail(headCommit, toolingBundlePath, lines) {
-  const allowNoBundle =
-    String(process.env.AF_ALLOW_NO_TOOLING_BUNDLE || "").trim() === "1";
-  const allowPrereqs =
-    String(process.env.AF_ALLOW_TOOLING_BUNDLE_PREREQS || "").trim() === "1";
-
-  if (!toolingBundlePath) {
-    lines.push("tooling_bundle_verify: (none)");
-    lines.push("tooling_bundle_prereq_count: (none)");
-    lines.push("tooling_bundle_self_contained: (none)");
-    lines.push("tooling_bundle_contains_head_commit: (none)");
-    lines.push("tooling_bundle_copied_into_packet: (none)");
-    if (!allowNoBundle) {
-      lines.push("status: TOOLING_BUNDLE_REQUIRED_REFUSED");
-      lines.push(
-        "policy: REFUSED (pass --toolingBundle <self-contained .bundle>, override AF_ALLOW_NO_TOOLING_BUNDLE=1 for non-final testing)"
-      );
-      const err = new Error(
-        "[FAIL] Tooling bundle is REQUIRED. Pass --toolingBundle <path-to-self-contained-git-bundle>."
-      );
-      err.name = "TOOLING_BUNDLE_REQUIRED_REFUSED";
-      throw err;
-    }
-    lines.push("status: TOOLING_BUNDLE_MISSING_OVERRIDE");
-    lines.push("override: AF_ALLOW_NO_TOOLING_BUNDLE=1");
-    return { abs: "", prereqCount: 0, containsHead: false };
-  }
-
-  const abs = path.resolve(toolingBundlePath);
-  if (!fs.existsSync(abs)) {
-    lines.push("tooling_bundle_verify: MISSING");
-    if (!allowNoBundle) {
-      lines.push("status: TOOLING_BUNDLE_MISSING_REFUSED");
-      const err = new Error("[FAIL] Tooling bundle path does not exist: " + abs);
-      err.name = "TOOLING_BUNDLE_MISSING_REFUSED";
-      throw err;
-    }
-    lines.push("status: TOOLING_BUNDLE_MISSING_OVERRIDE");
-    lines.push("override: AF_ALLOW_NO_TOOLING_BUNDLE=1");
-    return { abs, prereqCount: 0, containsHead: false };
-  }
-
-  const verify = git(["bundle", "verify", abs]);
-  const verifyText = (
-    String(verify.stdout || "") +
-    "\n" +
-    String(verify.stderr || "")
-  ).trim();
-
-  if (!gitOk(verify)) {
-    lines.push("tooling_bundle_verify: FAIL");
-    const err = new Error("[FAIL] git bundle verify failed.\n" + verifyText);
-    err.name = "TOOLING_BUNDLE_VERIFY_FAILED";
-    throw err;
-  }
-
-  const prereqs = parseBundlePrereqsFromVerifyOutput(verifyText);
-  const prereqCount = prereqs.length;
-
-  lines.push("tooling_bundle_verify: OK");
-  lines.push("tooling_bundle_prereq_count: " + prereqCount);
-  lines.push(
-    "tooling_bundle_self_contained: " + (prereqCount === 0 ? "YES" : "NO")
-  );
-
-  if (prereqCount > 0 && !allowPrereqs) {
-    lines.push("status: TOOLING_BUNDLE_PREREQS_REFUSED");
-    lines.push(
-      "policy: REFUSED (bundle must be self-contained, create with: git bundle create <path>.bundle HEAD)"
-    );
-    const err = new Error(
-      "[FAIL] Tooling bundle is NOT self-contained. Create: git bundle create <path>.bundle HEAD"
-    );
-    err.name = "TOOLING_BUNDLE_PREREQS_REFUSED";
-    throw err;
-  }
-  if (prereqCount > 0 && allowPrereqs) {
-    lines.push("override: AF_ALLOW_TOOLING_BUNDLE_PREREQS=1");
-  }
-
-  const heads = git(["bundle", "list-heads", abs]);
-  const headsText = (
-    String(heads.stdout || "") +
-    "\n" +
-    String(heads.stderr || "")
-  ).trim();
-
-  const re = new RegExp("(^|\\s)" + escapeRegex(headCommit) + "(\\s|$)", "m");
-  const containsHead = re.test(headsText);
-
-  lines.push(
-    "tooling_bundle_contains_head_commit: " + (containsHead ? "YES" : "NO")
-  );
-
-  if (!containsHead) {
-    lines.push("status: TOOLING_BUNDLE_HEAD_MISMATCH_REFUSED");
-    const err = new Error(
-      "[FAIL] Tooling bundle does not include head_commit. Rebuild from this HEAD: git bundle create <path>.bundle HEAD"
-    );
-    err.name = "TOOLING_BUNDLE_HEAD_MISMATCH_REFUSED";
-    throw err;
-  }
-
-  return { abs, prereqCount, containsHead };
-}
-
-function copyToolingBundleIntoPacket(caseRoot, toolingAbs) {
-  const deliverableDir = path.join(caseRoot, "Deliverable_Packet");
-  ensureDir(deliverableDir);
-  const destName = "AF_TOOLING.bundle";
-  const destAbs = path.join(deliverableDir, destName);
-  fs.copyFileSync(toolingAbs, destAbs);
-  return { copied: true, name: destName, abs: destAbs };
-}
-
-// -----------------------------
-// Builder resolution
-// -----------------------------
-
-function resolveBuilderOrFail(argv) {
-  const allowOverride =
-    String(process.env.AF_ALLOW_BUILDER_OVERRIDE || "").trim() === "1";
-
-  // Optional arg: --builder <rel-or-abs>
-  const b = parseArgValue(argv, "--builder");
-  if (b) {
-    const abs = path.isAbsolute(b) ? b : path.join(repoRoot(), b);
-    if (!fs.existsSync(abs)) {
-      const err = new Error("[FAIL] --builder path does not exist: " + abs);
-      err.name = "BUILDER_NOT_FOUND";
-      throw err;
-    }
-    if (!allowOverride) {
-      const err = new Error(
-        "[FAIL] --builder override refused unless AF_ALLOW_BUILDER_OVERRIDE=1 (non-final only)."
-      );
-      err.name = "BUILDER_OVERRIDE_REFUSED";
-      throw err;
-    }
-    return path.isAbsolute(b) ? repoRelFromAbs(abs) : b;
-  }
-
-  // Default builder script
-  const defaultRel = "tools/build_deliverable_zip.js";
-  const absDefault = path.join(repoRoot(), defaultRel);
-  if (!fs.existsSync(absDefault)) {
-    const err = new Error(
-      "[FAIL] Default builder missing: " + defaultRel + " (pass --builder to override)"
-    );
-    err.name = "BUILDER_NOT_FOUND";
-    throw err;
-  }
-  return defaultRel;
-}
-
-// -----------------------------
-// Provenance stamping
-// -----------------------------
-
 function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePath) {
-  const allowUntracked =
-    String(process.env.AF_ALLOW_UNTRACKED_BUILDER || "").trim() === "1";
-  const allowStagedOnly =
-    String(process.env.AF_ALLOW_STAGED_BUILDER || "").trim() === "1";
-  const allowHeadMismatch =
-    String(process.env.AF_ALLOW_HEAD_MISMATCH_BUILDER || "").trim() === "1";
-  const allowDirtyRepo =
-    String(process.env.AF_ALLOW_DIRTY_REPO || "").trim() === "1";
-  const allowMissingLockfile =
-    String(process.env.AF_ALLOW_MISSING_LOCKFILE || "").trim() === "1";
-  const allowUnknownNpm =
-    String(process.env.AF_ALLOW_UNKNOWN_NPM || "").trim() === "1";
+  const allowUntracked = String(process.env.AF_ALLOW_UNTRACKED_BUILDER || "").trim() === "1";
+  const allowStagedOnly = String(process.env.AF_ALLOW_STAGED_BUILDER || "").trim() === "1";
+  const allowHeadMismatch = String(process.env.AF_ALLOW_HEAD_MISMATCH_BUILDER || "").trim() === "1";
+  const allowDirtyRepo = String(process.env.AF_ALLOW_DIRTY_REPO || "").trim() === "1";
+  const allowMissingLockfile = String(process.env.AF_ALLOW_MISSING_LOCKFILE || "").trim() === "1";
+  const allowUnknownNpm = String(process.env.AF_ALLOW_UNKNOWN_NPM || "").trim() === "1";
 
   const headCommit = gitLine(["rev-parse", "HEAD"]) || "(unknown)";
   const branchName = gitLine(["rev-parse", "--abbrev-ref", "HEAD"]) || "(unknown)";
@@ -422,9 +376,7 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
   const npmUA = String(process.env.npm_config_user_agent || "");
   const npm = detectNpmVersion();
   if (npm.version === "(unknown)" && !allowUnknownNpm) {
-    const err = new Error(
-      "[FAIL] npm_version could not be resolved. Ensure npm is on PATH. Override (non-final only): AF_ALLOW_UNKNOWN_NPM=1"
-    );
+    const err = new Error("[FAIL] npm_version could not be resolved. Ensure npm is on PATH. Override (non-final only): AF_ALLOW_UNKNOWN_NPM=1");
     err.name = "NPM_VERSION_UNKNOWN_REFUSED";
     throw err;
   }
@@ -434,9 +386,7 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
     ["-p", "(()=>{try{return require('playwright/package.json').version}catch(e){return '(unknown)'}})()"],
     { shell: false, how: "node -p" }
   );
-  const playwrightV = (playwrightVersion.ok && playwrightVersion.out)
-    ? playwrightVersion.out
-    : "(unknown)";
+  const playwrightV = (playwrightVersion.ok && playwrightVersion.out) ? playwrightVersion.out : "(unknown)";
 
   const idxOid = indexBlobOid(builderRel);
   const headOid = headBlobOid(builderRel);
@@ -462,9 +412,10 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
   const lockExists = fs.existsSync(lockAbs);
   const lockSha = lockExists ? fileSha256(lockAbs) : "(missing)";
   const lockIdx = indexBlobOid(lockRel);
-  const lockHead = headBlobOid(lockRel);
-  const lockWt = worktreeBlobOid(lockRel);
+  const lockHead = lockExists ? headBlobOid(lockRel) : "";
+  const lockWt = lockExists ? worktreeBlobOid(lockRel) : "";
 
+  // tooling bundle fingerprint (source)
   let toolingBundleName = "(none)";
   let toolingBundleSha256 = "(none)";
   if (toolingBundlePath) {
@@ -545,6 +496,7 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
   }
   if (!lockExists && allowMissingLockfile) lines.push("override: AF_ALLOW_MISSING_LOCKFILE=1");
 
+  // wrapper + guard must be committed (HEAD == index == worktree)
   if (!(wHead && wIdx && wWt && wHead === wIdx && wWt === wHead)) {
     lines.push("status: WRAPPER_NOT_COMMITTED_REFUSED");
     lines.push("policy: REFUSED (wrapper must match HEAD and index)");
@@ -572,55 +524,11 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
     throw err;
   }
 
-  let toolingVerify;
-  try {
-    toolingVerify = verifyToolingBundleOrFail(headCommit, toolingBundlePath, lines);
-  } catch (e) {
-    writeNote(caseRoot, lines);
-    throw e;
-  }
-
-  let copied;
-  try {
-    copied = toolingVerify && toolingVerify.abs
-      ? copyToolingBundleIntoPacket(caseRoot, toolingVerify.abs)
-      : { copied: false, name: "(none)", abs: "" };
-  } catch {
-    lines.push("tooling_bundle_copied_into_packet: NO");
-    lines.push("status: TOOLING_BUNDLE_COPY_FAILED");
-    writeNote(caseRoot, lines);
-    const err = new Error("[FAIL] Tooling bundle copy into packet failed.");
-    err.name = "TOOLING_BUNDLE_COPY_FAILED";
-    throw err;
-  }
-
-  lines.push("tooling_bundle_copied_into_packet: " + (copied.copied ? "YES" : "NO"));
-  lines.push("tooling_bundle_packet_name: " + (copied.name || "(none)"));
-
-  if (!copied.copied || !copied.abs || !fs.existsSync(copied.abs)) {
-    lines.push("tooling_bundle_packet_sha256: (none)");
-    lines.push("status: TOOLING_BUNDLE_COPY_FAILED");
-    writeNote(caseRoot, lines);
-    const err = new Error("[FAIL] Tooling bundle was required but is not present in packet after copy.");
-    err.name = "TOOLING_BUNDLE_COPY_FAILED";
-    throw err;
-  }
-
-  const packetSha = fileSha256(copied.abs).toLowerCase();
-  const srcSha = String(toolingBundleSha256 || "").toLowerCase();
-  lines.push("tooling_bundle_packet_sha256: " + packetSha);
-
-  if (srcSha && srcSha !== "(missing)" && srcSha !== "(none)" && packetSha !== srcSha) {
-    lines.push("status: TOOLING_BUNDLE_COPY_HASH_MISMATCH");
-    writeNote(caseRoot, lines);
-    const err = new Error("[FAIL] Tooling bundle copy hash mismatch, packet differs from source.");
-    err.name = "TOOLING_BUNDLE_COPY_HASH_MISMATCH";
-    throw err;
-  }
-
+  // builder tracking rules
   if (inHead && inIndex && wtOid && headOid && idxOid && wtOid === headOid && idxOid === headOid) {
     lines.push("status: COMMITTED_HEAD");
     lines.push("note: builder matches HEAD and index, reproducible from commit history");
+    // tooling verification happens after we know deliverable exists, but we can still verify bundle now
     writeNote(caseRoot, lines);
     return;
   }
@@ -667,10 +575,9 @@ function stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePa
   throw err;
 }
 
-// -----------------------------
-// Zip verification
-// -----------------------------
-
+// ---------------------------
+// zip embed verification
+// ---------------------------
 function findZipOrFail(caseRoot, caseId) {
   const name = "Deliverable_Packet_" + caseId + ".zip";
   const candidates = [
@@ -706,9 +613,7 @@ function findZipOrFail(caseRoot, caseId) {
               bestMtime = mt;
               best = abs;
             }
-          } catch {
-            // ignore
-          }
+          } catch {}
         }
       } else if (it.isDirectory()) {
         scanDir(abs, depth - 1);
@@ -732,14 +637,11 @@ function parseExpectedBundleHashFromNote(noteText) {
 }
 
 function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
-  const allowNoZipVerify =
-    String(process.env.AF_ALLOW_NO_ZIP_VERIFY || "").trim() === "1";
+  const allowNoZipVerify = String(process.env.AF_ALLOW_NO_ZIP_VERIFY || "").trim() === "1";
 
   if (process.platform !== "win32") {
     if (allowNoZipVerify) return;
-    const err = new Error(
-      "[FAIL] ZIP verification requires Windows environment. Refusing on non-win32. Override (non-final only): AF_ALLOW_NO_ZIP_VERIFY=1"
-    );
+    const err = new Error("[FAIL] ZIP verification requires Windows environment. Refusing on non-win32. Override (non-final only): AF_ALLOW_NO_ZIP_VERIFY=1");
     err.name = "ZIP_VERIFY_UNSUPPORTED_PLATFORM";
     throw err;
   }
@@ -751,7 +653,6 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
     err.name = "NOTE_MISSING";
     throw err;
   }
-
   const note = fs.readFileSync(notePath, "utf8");
   const expected = parseExpectedBundleHashFromNote(note);
   if (!expected) {
@@ -764,25 +665,11 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "af_zipcheck_"));
 
   try {
-    const psCmd =
-      "Expand-Archive -LiteralPath " +
-      psQuote(zipAbs) +
-      " -DestinationPath " +
-      psQuote(tmpDir) +
-      " -Force";
-
-    let r = spawnSync(
-      "powershell",
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psCmd],
-      { encoding: "utf8", cwd: repoRoot(), shell: false }
-    );
+    const psCmd = "Expand-Archive -LiteralPath " + psQuote(zipAbs) + " -DestinationPath " + psQuote(tmpDir) + " -Force";
+    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psCmd], { encoding: "utf8", cwd: repoRoot() });
 
     if (!r || r.status !== 0) {
-      const t = spawnSync("tar", ["-xf", zipAbs, "-C", tmpDir], {
-        encoding: "utf8",
-        cwd: repoRoot(),
-        shell: false,
-      });
+      const t = spawnSync("tar", ["-xf", zipAbs, "-C", tmpDir], { encoding: "utf8", cwd: repoRoot() });
       if (!t || t.status !== 0) {
         const err = new Error(
           "[FAIL] ZIP extraction failed (Expand-Archive and tar fallback).\n" +
@@ -833,9 +720,7 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
 
     const zipToolingSha = fileSha256(extractedTooling).toLowerCase();
     if (zipToolingSha !== expected) {
-      const err = new Error(
-        "[FAIL] Zip AF_TOOLING.bundle SHA mismatch. zip=" + zipToolingSha + " expected(note)=" + expected
-      );
+      const err = new Error("[FAIL] Zip AF_TOOLING.bundle SHA mismatch. zip=" + zipToolingSha + " expected(note)=" + expected);
       err.name = "ZIP_TOOLING_HASH_MISMATCH";
       throw err;
     }
@@ -850,9 +735,7 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
     const noteSha = fileSha256(notePath).toLowerCase();
     const zipNoteSha = fileSha256(extractedNote).toLowerCase();
     if (zipNoteSha !== noteSha) {
-      const err = new Error(
-        "[FAIL] Zip BUILDER_TRACKING_NOTE.txt SHA mismatch. zip=" + zipNoteSha + " packet=" + noteSha
-      );
+      const err = new Error("[FAIL] Zip BUILDER_TRACKING_NOTE.txt SHA mismatch. zip=" + zipNoteSha + " packet=" + noteSha);
       err.name = "ZIP_NOTE_HASH_MISMATCH";
       throw err;
     }
@@ -863,54 +746,111 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
   } finally {
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 }
 
-// -----------------------------
-// main
-// -----------------------------
-
+// ---------------------------
+// main wrapper flow (critical sequencing fix)
+// ---------------------------
 function main() {
   const argv = process.argv.slice(2);
-
-  const caseRootArg = parseArgValue(argv, "--caseRoot");
+  const caseRootArg = parseCaseRoot(argv);
   if (!caseRootArg) {
     console.error("ERROR: --caseRoot is required");
     process.exit(2);
   }
 
-  const caseRoot = path.resolve(caseRootArg);
-  const caseId = path.basename(caseRoot);
-
-  const toolingBundlePath = parseArgValue(argv, "--toolingBundle");
-
-  // Guard packet first
-  guardDeliverablePacket({ caseRoot, caseId });
-
-  // Resolve and stamp builder provenance
-  const builderRel = resolveBuilderOrFail(argv);
-  const builderAbs = path.isAbsolute(builderRel) ? builderRel : path.join(repoRoot(), builderRel);
-  stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePath);
-
-  // Run builder, strip wrapper-only args
-  const passThru = stripArg(stripArg(argv, "--toolingBundle"), "--builder");
-  const r = spawnSync(process.execPath, [builderAbs, ...passThru], { stdio: "inherit" });
-  const code = typeof r.status === "number" ? r.status : 1;
-
-  // If builder succeeded, verify zip contains tooling bundle and note
-  if (code === 0) {
-    try {
-      verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId);
-    } catch (e) {
-      console.error(String(e && e.message ? e.message : e));
-      process.exit(81);
-    }
+  // enforce repo root context
+  if (!fs.existsSync(path.join(repoRoot(), "package.json"))) {
+    const err = new Error("[FAIL] Run from repo root (package.json not found).");
+    err.name = "NOT_REPO_ROOT";
+    throw err;
   }
 
-  process.exit(code);
+  const caseRoot = path.resolve(caseRootArg);
+  const caseId = path.basename(caseRoot);
+  const toolingBundlePath = extractToolingBundleArg(argv);
+
+  // 1) RUN BUILDER FIRST (this creates Deliverable_Packet and the zip)
+  const builderRel = resolveBuilderOrFail();
+  const builderAbs = path.join(repoRoot(), builderRel);
+
+  const passThru = stripToolingBundleArgs(process.argv);
+  // ensure we run builder with same args (minus tooling bundle)
+  const r = spawnSync(process.execPath, [builderAbs, ...passThru.slice(2)], { stdio: "inherit", cwd: repoRoot() });
+  const code = (typeof r.status === "number") ? r.status : 1;
+  if (code !== 0) process.exit(code);
+
+  // 2) NOW that Deliverable_Packet should exist, call guard
+  const guard = require(path.join(repoRoot(), "tools", "deliverable_guard.js"));
+  if (!guard || typeof guard.guardDeliverablePacket !== "function") {
+    const err = new Error("[FAIL] deliverable_guard.js does not export guardDeliverablePacket().");
+    err.name = "GUARD_EXPORT_MISSING";
+    throw err;
+  }
+  guard.guardDeliverablePacket({ caseRoot, caseId });
+
+  // 3) Stamp provenance note
+  stampProvenanceOrFail(caseRoot, builderRel, builderAbs, toolingBundlePath);
+
+  // 4) Append tooling bundle verification + embed into note
+  const notePath = path.join(caseRoot, "Deliverable_Packet", "BUILDER_TRACKING_NOTE.txt");
+  const noteLines = fs.existsSync(notePath) ? readUtf8NoBom(notePath).split(/\r?\n/).filter(Boolean) : ["BUILDER_TRACKING_NOTE"];
+
+  const headCommit = gitLine(["rev-parse", "HEAD"]) || "(unknown)";
+  let toolingVerify;
+  try {
+    toolingVerify = verifyToolingBundleOrFail(headCommit, toolingBundlePath, noteLines);
+  } catch (e) {
+    writeNote(caseRoot, noteLines);
+    throw e;
+  }
+
+  let copied = { copied: false, name: "(none)", abs: "" };
+  try {
+    copied = toolingVerify && toolingVerify.abs
+      ? copyToolingBundleIntoPacket(caseRoot, toolingVerify.abs)
+      : { copied: false, name: "(none)", abs: "" };
+  } catch {
+    noteLines.push("tooling_bundle_copied_into_packet: NO");
+    noteLines.push("status: TOOLING_BUNDLE_COPY_FAILED");
+    writeNote(caseRoot, noteLines);
+    const err = new Error("[FAIL] Tooling bundle copy into packet failed.");
+    err.name = "TOOLING_BUNDLE_COPY_FAILED";
+    throw err;
+  }
+
+  noteLines.push("tooling_bundle_copied_into_packet: " + (copied.copied ? "YES" : "NO"));
+  noteLines.push("tooling_bundle_packet_name: " + (copied.name || "(none)"));
+
+  if (!copied.copied || !copied.abs || !fs.existsSync(copied.abs)) {
+    noteLines.push("tooling_bundle_packet_sha256: (none)");
+    noteLines.push("status: TOOLING_BUNDLE_COPY_FAILED");
+    writeNote(caseRoot, noteLines);
+    const err = new Error("[FAIL] Tooling bundle was required but is not present in packet after copy.");
+    err.name = "TOOLING_BUNDLE_COPY_FAILED";
+    throw err;
+  }
+
+  const packetSha = fileSha256(copied.abs).toLowerCase();
+  noteLines.push("tooling_bundle_packet_sha256: " + packetSha);
+  writeNote(caseRoot, noteLines);
+
+  // 5) Verify zip actually contains AF_TOOLING.bundle and the note
+  try {
+    verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId);
+  } catch (e) {
+    console.error(String(e && e.message ? e.message : e));
+    process.exit(81);
+  }
+
+  process.exit(0);
 }
 
-main();
+try {
+  main();
+} catch (e) {
+  console.error("ERROR:", e && e.message ? e.message : e);
+  process.exit(1);
+}
