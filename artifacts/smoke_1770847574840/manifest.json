@@ -1,0 +1,29 @@
+{
+  "schema": "AF_PACKET_MANIFEST_V1",
+  "generated_at": "2026-02-11T22:06:16.820Z",
+  "repo": {
+    "version": "5.7.6",
+    "git_sha": "4ef433482a430e4e94376664eb353d726065762c"
+  },
+  "artifact_dir": "C:\\Users\\mskir\\Desktop\\accessforensics-main\\artifacts\\smoke_1770847574840",
+  "contents": {
+    "journal": "journal.ndjson",
+    "evidence_index": "evidence_index.json",
+    "packet_hash": "packet_hash.txt",
+    "sealing_rule": "packet_hash = sha256( stable_json(evidence_index.json as object, files sorted by path) )"
+  },
+  "env": {
+    "env_label": "MOBILE_EMULATION",
+    "viewport": {
+      "height": 844,
+      "width": 390
+    },
+    "isMobile": true,
+    "hasTouch": true,
+    "deviceScaleFactor": 3,
+    "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    "version": "5.7.6",
+    "git_sha": "4ef433482a430e4e94376664eb353d726065762c",
+    "ts": "2026-02-11T22:06:16.598Z"
+  }
+}

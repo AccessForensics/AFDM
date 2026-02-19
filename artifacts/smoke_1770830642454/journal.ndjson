@@ -1,0 +1,2 @@
+{"prev_hash":"00000000000000000000000000000000","data":{"type":"SMOKE","ts_utc":"2026-02-11T17:24:03.424Z","ok":true,"note":"smoke run completed"},"hash":"ca0379ae9f52406a52e0a473c3c234e7bfeb9ccd248140e95dc14c111110fc96"}
+{"t":"ENV","ts":"2026-02-11T17:24:03.510Z","env_label":"MOBILE_EMULATION","viewport":{"height":844,"width":390},"isMobile":true,"hasTouch":true,"deviceScaleFactor":3,"userAgent":"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"}

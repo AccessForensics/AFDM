@@ -1,0 +1,8 @@
+{
+  "env": "mobile",
+  "target_url": "https://client-site.com",
+  "final_url": "https://client-site.com:4343/login",
+  "timestamp": "2026-02-19T00:07:20.449Z",
+  "ssl_errors_ignored": true,
+  "navigation_error": null
+}

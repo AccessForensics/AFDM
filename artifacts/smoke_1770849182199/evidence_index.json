@@ -1,0 +1,18 @@
+{
+  "schema": "AF_EVIDENCE_INDEX_V1",
+  "generated_at": "2026-02-11T22:33:04.462Z",
+  "artifact_dir": "C:\\Users\\mskir\\Desktop\\accessforensics-main\\artifacts\\smoke_1770849182199",
+  "file_count": 2,
+  "files": [
+    {
+      "path": "journal.ndjson",
+      "bytes": 580,
+      "sha256": "6d3b2b5a29740094af1a4dc70c4bd2d228d3736c5d582d88b7c14c09ca61def9"
+    },
+    {
+      "path": "verification_mirror.html",
+      "bytes": 72,
+      "sha256": "5cfec12d32bbc9ff7dc8548bae7e7f7d89eb5c955e06903a5afabd2d0b0bbf86"
+    }
+  ]
+}

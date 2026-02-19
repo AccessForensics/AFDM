@@ -1,0 +1,12 @@
+{
+    "matter_id":  "matter_20260215_104506",
+    "strict_mode":  true,
+    "url":  "https://frenchconnection.com",
+    "viewport":  {
+                     "width":  1280,
+                     "height":  720
+                 },
+    "allowed_selectors":  [
+
+                          ]
+}

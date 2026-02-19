@@ -1,0 +1,15 @@
+{
+  "t": "AF_INDEX",
+  "root": "smoke_1770842542548",
+  "count": 2,
+  "items": [
+    {
+      "path": "journal.ndjson",
+      "sha256": "fc05f2ee3c14ea194e798e65b0c696a81de1f34b4d1ac23d08d23a1c10e35605"
+    },
+    {
+      "path": "verification_mirror.html",
+      "sha256": "5cfec12d32bbc9ff7dc8548bae7e7f7d89eb5c955e06903a5afabd2d0b0bbf86"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+﻿ACCESS FORENSICS INTAKE SUMMARY
+generated_utc: 2026-02-15T15:51:22.961Z
+selection_mode: human_override
+source_pdf: [REDACTED_PATH]\Desktop\accessforensics-main\_intake_inbox\complaint.pdf
+
+out_dir: [REDACTED_PATH]\Desktop\accessforensics-main\runs\matter_20260215_104506\intake
+extracted_text: [REDACTED_PATH]\Desktop\accessforensics-main\runs\matter_20260215_104506\intake\extracted_text.txt
+candidates_json: [REDACTED_PATH]\Desktop\accessforensics-main\runs\matter_20260215_104506\intake\candidates.json
+candidates_flat: [REDACTED_PATH]\Desktop\accessforensics-main\runs\matter_20260215_104506\intake\candidates_flat.txt
+selected_targets: [REDACTED_PATH]\Desktop\accessforensics-main\runs\matter_20260215_104506\intake\selected_targets.txt
+complaint_out: [REDACTED_PATH]\Desktop\accessforensics-main\runs\matter_20260215_104506\intake\complaint.txt
+targets_out: [REDACTED_PATH]\Desktop\accessforensics-main\runs\matter_20260215_104506\intake\targets.txt
+
+selected domain:
+- frenchconnection.com

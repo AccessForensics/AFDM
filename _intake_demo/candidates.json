@@ -1,0 +1,56 @@
+{
+  "version": "intake_candidates_v1",
+  "source_pdf": "C:\\Users\\mskir\\Desktop\\accessforensics-main\\_intake_inbox\\complaint.pdf",
+  "pages": 19,
+  "generated_utc": "2026-02-15T03:11:06.376Z",
+  "domains": [
+    {
+      "domain": "frenchconnection.com",
+      "occurrences": [
+        {
+          "domain": "frenchconnection.com",
+          "raw": "frenchconnection.com",
+          "kind": "domain",
+          "page": 13,
+          "start": 1244,
+          "end": 1264,
+          "snippet": "l of full and equal access to, and enjoyment of, the goods, benefits and se rvices of usa.f renchconnection.com , Plaintiff and the class have suffered an injury - in - fact which is concrete and part"
+        }
+      ]
+    },
+    {
+      "domain": "usa.frenchconnection.com",
+      "occurrences": [
+        {
+          "domain": "usa.frenchconnection.com",
+          "raw": "http://usa.frenchconnection.com/",
+          "kind": "url",
+          "page": 1,
+          "start": 1433,
+          "end": 1465,
+          "snippet": "gainst Defendant for its failure to design, construct, maintain, and operate its W ebsite http://usa.frenchconnection.com/ (hereinafter “Website” or “the Website”) to be fully accessible to and independently usab"
+        },
+        {
+          "domain": "usa.frenchconnection.com",
+          "raw": "usa.frenchconnection.com",
+          "kind": "domain",
+          "page": 1,
+          "start": 1440,
+          "end": 1464,
+          "snippet": "Defendant for its failure to design, construct, maintain, and operate its W ebsite http://usa.frenchconnection.com/ (hereinafter “Website” or “the Website”) to be fully accessible to and independently usa"
+        },
+        {
+          "domain": "usa.frenchconnection.com",
+          "raw": "usa.frenchconnection.com",
+          "kind": "domain",
+          "page": 12,
+          "start": 120,
+          "end": 144,
+          "snippet": "25, Anderson searched for mini dresses on Google and encountered the Defendant’s website, usa.frenchconnection.com, which offers a wide variety of contemporary women’s clothing. After reviewing positive c"
+        }
+      ]
+    }
+  ],
+  "total_domains": 2,
+  "total_occurrences": 4
+}
