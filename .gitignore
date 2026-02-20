@@ -29,3 +29,8 @@ BUILDER_TRACKING_NOTE.txt
 Thumbs.db
 .vscode/
 .idea/
+@
+# Forensic Exhibit Data
+Keyboard-Traversal-Verification_Packet/
+runs/
+artifacts/
