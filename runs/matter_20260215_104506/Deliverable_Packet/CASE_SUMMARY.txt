@@ -1,8 +1,0 @@
-matter_id: matter_20260215_104506
-target: https://frenchconnection.com
-
-desktop_packet_dir: packets\desktop\matter_20260215_104506_1771171944463
-desktop_packet_hash: ebe6a9a75fc8c86ea3344ef7262fff048fa5c5341b79036fd3f5a3cf122c2c33
-
-mobile_packet_dir: packets\mobile\matter_20260215_104506_1771171948638
-mobile_packet_hash: a4f8f92df1eac908e3ec00d9588b8a5e5f59800288a018f149051e574be2d3cc
