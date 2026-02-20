@@ -1,2 +1,0 @@
-{"prev_hash":"00000000000000000000000000000000","data":{"type":"SMOKE","ts_utc":"2026-02-11T19:36:30.970Z","ok":true,"note":"smoke run completed"},"hash":"41a9731483ec1b56d7dfce3cd67d5b5d0585d5e5dccca43ec75add4a506f7e98"}
-{"t":"ENV","ts":"2026-02-11T19:36:31.059Z","env_label":"DESKTOP","viewport":{"width":1280,"height":720},"isMobile":false,"hasTouch":false,"deviceScaleFactor":1,"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36","version":"5.7.6","git_sha":"5cc8dec85c4732f8d1ee353917f67cac8d05c6e6"}
