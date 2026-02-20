@@ -1,0 +1,19 @@
+﻿<script id="afdm-touch-pro">
+(function() {
+    const min = 44;
+    const audit = () => {
+        const els = document.querySelectorAll('button, a, input, [role="button"]');
+        els.forEach(el => {
+            const r = el.getBoundingClientRect();
+            if (r.width > 0 && (r.width < min || r.height < min)) {
+                el.style.outline = "4px solid #ff0000";
+                el.style.outlineOffset = "2px";
+                console.warn(`[AFDM-M][Violation] Small Target: ${Math.round(r.width)}x${Math.round(r.height)}px`, el);
+            }
+        });
+    };
+    audit();
+    new MutationObserver(audit).observe(document.body, { childList: true, subtree: true });
+    console.log("%c[AFDM-M] Touch Audit Active", "color: yellow; font-weight: bold;");
+})();
+</script>

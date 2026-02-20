@@ -1,0 +1,14 @@
+﻿<script id="afdm-reflow-pro">
+(function() {
+    const check = () => {
+        const vW = window.innerWidth;
+        const bW = document.body.scrollWidth;
+        if (bW > vW) {
+            console.error(`[AFDM-M][Violation] Reflow Detected: ${bW}px width`);
+            document.body.style.borderRight = "10px solid #800080";
+        }
+    };
+    window.addEventListener('resize', check);
+    check();
+})();
+</script>
