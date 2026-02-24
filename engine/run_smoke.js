@@ -65,7 +65,7 @@ const watchdog = setTimeout(() => {
       process.exit(2);
     }
 
-    console.log("[PASS] captureMirror completed + journal present");
+    console.log("[OK] captureMirror completed + journal present");
   } finally {
     clearTimeout(watchdog);
     try { if (eng.context && typeof eng.context.close === "function") await eng.context.close(); } catch {}
@@ -78,6 +78,7 @@ const watchdog = setTimeout(() => {
   console.error("[FAIL] exception:", e && e.stack ? e.stack : e);
   process.exit(1);
 });
+
 
 
 

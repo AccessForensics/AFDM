@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Intake Prepare (v1.1) [ONE DEFENDANT, ONE DOMAIN]
  *
  * Contract rules:
@@ -349,3 +349,19 @@ try {
 } catch (e) {
   die(e && e.stack ? e.stack : String(e));
 }
+
+// S6/S8.E-H: Atomic run units + DeepSeek dimension-aware mobile anchor
+const MOBILE_TERMS = [
+  'mobile','phone','tablet','handheld','iphone','android','tap','swipe',
+  'pinch','safari','viewport','samsung galaxy','long-press','mobile safari','android chrome'
+];
+const paragraphs = extractedTrim.split(/\n\s*\n+/).filter(p => p.trim().length > 20);
+const runUnits = paragraphs.map((p, i) => ({
+  rununitid:            i + 1,
+  complaintgroupanchor: `Page range 1-${pages.length}, paragraph ${i + 1}`,
+  assertedcondition:    p.trim().slice(0, 500),
+  mobileSpecific:       MOBILE_TERMS.some(t => p.toLowerCase().includes(t)) ||
+                        /\b[3-9]\d{2,3}px\b/.test(p)
+}));
+fs.writeFileSync(path.join(outDir, 'rununits.json'),       JSON.stringify(runUnits, null, 2));
+fs.writeFileSync(path.join(outDir, 'mobileanchored.flag'), runUnits.some(u => u.mobileSpecific) ? 'true' : 'false');
