@@ -1,4 +1,4 @@
-const SKUAEngine = require('./ect.js');
+﻿const SKUAEngine = require('./ect.js');
 const fs = require('fs');
 
 async function runTriage() {
@@ -45,7 +45,7 @@ async function runTriage() {
         console.log("\n------------------------------------------------------------");
         if (confirmationFound) {
             console.log(`RESULT: [ YES ] - REPRODUCIBILITY CONFIRMED`);
-            console.log(`SIGNAL: ${mechanicalVerb}`);
+            console.log("SIGNAL: " + mechanicalVerb);
         } else {
             console.log("RESULT: [ NO ] - NOT REPRODUCED");
         }

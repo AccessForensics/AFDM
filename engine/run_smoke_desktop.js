@@ -42,7 +42,7 @@ if (!fs.existsSync(inputManifestPath)) fatal("[FATAL] Manifest not found: " + in
 const manifest = JSON.parse(fs.readFileSync(inputManifestPath, "utf8"));
 
 // Force desktop envelope (deterministic)
-manifest.viewport = manifest.viewport || { width: 1366, height: 768 };
+manifest.viewport = manifest.viewport || { width: 1281, height: 800 };
 manifest.isMobile = false;
 manifest.hasTouch = false;
 manifest.deviceScaleFactor = manifest.deviceScaleFactor || 1;
@@ -103,3 +103,4 @@ console.log("[OK] ENV appended ->", journalPath);
 }
 
 process.exit(0);
+
