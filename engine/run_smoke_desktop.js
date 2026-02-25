@@ -1,106 +1,202 @@
-﻿const fs = require("fs");
+﻿"use strict";
+
+const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { chromium } = require("playwright");
+const ENUMS = require("../src/engine/intake/enums.js");
+const CORE = require("../src/engine/intake/engine_core.js");
 
-function fatal(msg, code) {
-  console.error(msg);
-  process.exit(code);
+function terminateExecution(msg) {
+  console.error("[SEV_FATAL] [DESKTOP_ENGINE] " + msg);
+  process.exit(1);
 }
 
-const repoRoot = path.resolve(__dirname, "..");
+async function main() {
+  const targetUrl = CORE.parseArg(process.argv, "--url");
+  const outDir = CORE.parseArg(process.argv, "--out");
+  const runId = CORE.parseArg(process.argv, "--run-id") || "0";
+  const provisionPath = CORE.parseArg(process.argv, "--provision");
 
-function resolveFromRoot(p) {
-  return path.isAbsolute(p) ? p : path.join(repoRoot, p);
-}
+  if (!targetUrl) terminateExecution("Missing --url");
+  if (!outDir) terminateExecution("Missing --out");
 
-function gitHeadSha() {
-  const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" });
-  if (r.status !== 0) return null;
-  return (r.stdout || "").trim() || null;
-}
+  fs.mkdirSync(outDir, { recursive: true });
 
-function pkgVersion() {
+  const stamp = CORE.getForensicStamp();
+  const artifactPath = path.join(outDir, `run_${runId}_desktop.json`);
+  const envPath = path.join(outDir, `run_${runId}_desktop_env.json`);
+
+  const artifact = {
+    runId,
+    scope: "ALLEGATION_SCOPED",
+    context: "desktop",
+    url: targetUrl,
+    render_stage: "domcontentloaded",
+    time_local: stamp.time_local,
+    epoch_ms: stamp.epoch_ms,
+    tz_offset_min: stamp.tz_offset_min,
+    outcome: ENUMS.OUTCOME.INSUFFICIENT,
+    constraintclass: null,
+    httpStatus: null,
+    navUrl: null,
+    finalUrl: null,
+    title: null,
+    signals: [],
+    responseHeaders: {},
+    challenge_fingerprint_sha256: null,
+    challenge_fingerprint_bytes: 0,
+    provisioned_lane: { used: false, source: null, cookie_names: [], header_names: [], rejected_cookie_names: [] },
+    provisioned_lane_changed_outcome: false,
+    methodology: ENUMS.METHODOLOGY,
+    environment: {
+      viewport: { width: 1366, height: 900 },
+      deviceScaleFactor: 1,
+      isMobile: false,
+      hasTouch: false,
+      locale: "en-US",
+      timezoneId: "America/New_York",
+      headless: true,
+      playwrightVersion: null,
+      browserName: "chromium",
+      browserVersion: null,
+      userAgent_runtime: null
+    }
+  };
+
+  let browser = null;
+  let exitCode = 1;
+
   try {
-    const p = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
-    return p.version || null;
-  } catch {
-    return null;
+    artifact.environment.playwrightVersion = require("playwright/package.json").version;
+
+    browser = await chromium.launch({ headless: true });
+    artifact.environment.browserVersion = await browser.version();
+
+    const provision = CORE.loadProvisionedLane(provisionPath, outDir);
+
+    const ctxOptions = {
+      viewport: { width: 1366, height: 900 },
+      deviceScaleFactor: 1,
+      ignoreHTTPSErrors: true,
+      javaScriptEnabled: true,
+      locale: "en-US",
+      timezoneId: "America/New_York"
+    };
+
+    if (provision && provision.data && provision.data.extraHTTPHeaders && typeof provision.data.extraHTTPHeaders === "object") {
+      ctxOptions.extraHTTPHeaders = provision.data.extraHTTPHeaders;
+      artifact.provisioned_lane.used = true;
+      artifact.provisioned_lane.source = provision.source;
+      artifact.provisioned_lane.header_names = Object.keys(provision.data.extraHTTPHeaders);
+    }
+
+    const ctx = await browser.newContext(ctxOptions);
+
+    if (provision && provision.data && Array.isArray(provision.data.cookies) && provision.data.cookies.length > 0) {
+      const filtered = CORE.filterCookiesForTarget(provision.data.cookies, targetUrl);
+
+      if (filtered.rejected.length > 0) {
+        artifact.provisioned_lane.rejected_cookie_names = filtered.rejected.map(r => r.name).filter(Boolean);
+        artifact.signals.push("PROVISIONED_COOKIE_REJECTIONS");
+      }
+
+      if (filtered.accepted.length > 0) {
+        try {
+          await ctx.addCookies(filtered.accepted);
+          artifact.provisioned_lane.used = true;
+          artifact.provisioned_lane.source = provision ? provision.source : "provision.json";
+          artifact.provisioned_lane.cookie_names = Array.from(new Set(filtered.accepted.map(c => c && c.name).filter(Boolean)));
+        } catch {
+          artifact.signals.push("PROVISIONED_COOKIES_REJECTED");
+        }
+      }
+    }
+
+    const page = await ctx.newPage();
+    artifact.environment.userAgent_runtime = await page.evaluate(() => navigator.userAgent);
+
+    const res = await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
+    artifact.navUrl = res ? res.url() : null;
+
+    const status = res ? res.status() : 0;
+    artifact.httpStatus = status;
+    artifact.finalUrl = page.url();
+
+    const headers = CORE.normalizeHeaders(res ? res.headers() : {});
+    artifact.responseHeaders = CORE.pickHeaderSubset(headers);
+
+    const html = await CORE.safePageContent(page);
+    const htmlLower = html.toLowerCase();
+    const finalUrlLower = String(artifact.finalUrl || "").toLowerCase();
+
+    if (status === 401) {
+      artifact.outcome = ENUMS.OUTCOME.CONSTRAINED;
+      artifact.constraintclass = ENUMS.CONSTRAINT.AUTHWALL;
+      artifact.signals = ["HTTP_401"];
+      exitCode = 1;
+    } else {
+      const pw = CORE.detectPasswordWall(finalUrlLower, htmlLower);
+      if (pw.isLikely) {
+        artifact.outcome = ENUMS.OUTCOME.CONSTRAINED;
+        artifact.constraintclass = ENUMS.CONSTRAINT.AUTHWALL;
+        artifact.signals = pw.signals;
+        exitCode = 1;
+      } else {
+        const geo = CORE.detectGeoblock(status, htmlLower);
+        if (geo.isLikely) {
+          artifact.outcome = ENUMS.OUTCOME.CONSTRAINED;
+          artifact.constraintclass = ENUMS.CONSTRAINT.GEOBLOCK;
+          artifact.signals = geo.signals;
+          exitCode = 1;
+        } else {
+          const bot = CORE.detectBotMitigation(status, headers, htmlLower, finalUrlLower);
+          if (bot.isLikely) {
+            artifact.outcome = ENUMS.OUTCOME.CONSTRAINED;
+            artifact.constraintclass = ENUMS.CONSTRAINT.BOTMITIGATION;
+            artifact.signals = bot.signals;
+
+            const snippet = html.slice(0, 65536);
+            artifact.challenge_fingerprint_sha256 = CORE.sha256Utf8(snippet);
+            artifact.challenge_fingerprint_bytes = Buffer.byteLength(snippet, "utf8");
+
+            exitCode = 1;
+          } else if (status >= 400 || status === 0) {
+            artifact.outcome = ENUMS.OUTCOME.CONSTRAINED;
+            artifact.constraintclass = ENUMS.CONSTRAINT.NAVIMPEDIMENT;
+            artifact.signals = ["HTTP_" + String(status)];
+            exitCode = 1;
+          } else {
+            artifact.outcome = ENUMS.OUTCOME.OBSERVED;
+            artifact.title = await page.title();
+            exitCode = 0;
+          }
+        }
+      }
+    }
+
+    artifact.provisioned_lane_changed_outcome = Boolean(artifact.provisioned_lane.used && artifact.outcome === ENUMS.OUTCOME.OBSERVED);
+
+    fs.writeFileSync(envPath, JSON.stringify(artifact.environment, null, 2), "utf8");
+    await ctx.close();
+  } catch (e) {
+    const msg = String(e && e.message ? e.message : e).toLowerCase();
+    artifact.outcome = ENUMS.OUTCOME.CONSTRAINED;
+    artifact.constraintclass = msg.includes("timeout") ? ENUMS.CONSTRAINT.HARDCRASH : ENUMS.CONSTRAINT.NAVIMPEDIMENT;
+    artifact.signals = [artifact.constraintclass === ENUMS.CONSTRAINT.HARDCRASH ? "ERR_TIMEOUT" : "ERR_NAV"];
+    artifact.provisioned_lane_changed_outcome = false;
+    exitCode = 1;
+  } finally {
+    try {
+      fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2), "utf8");
+      console.log("[SEV_INFO] [DESKTOP_ENGINE] Artifact written: " + artifactPath);
+      console.log("[AFDM_RUN_SUMMARY] outcome=" + artifact.outcome + " constraintclass=" + (artifact.constraintclass || "") + " httpStatus=" + String(artifact.httpStatus || 0));
+    } catch (writeErr) {
+      console.error("[SEV_FATAL] [DESKTOP_ENGINE] Write failure: " + String(writeErr));
+      exitCode = 1;
+    }
+    if (browser) await browser.close();
+    process.exit(exitCode);
   }
 }
 
-function parseArtifactDir(outputText) {
-  const m = outputText.match(/^\[AF_ARTIFACT_DIR\]\s+(.+)\s*$/m);
-  return m ? m[1].trim() : null;
-}
-
-const inputArg = process.argv[2];
-if (!inputArg) fatal("[FATAL] Usage: node engine/run_smoke_desktop.js <manifest.json>", 2);
-
-const inputManifestPath = resolveFromRoot(inputArg);
-if (!fs.existsSync(inputManifestPath)) fatal("[FATAL] Manifest not found: " + inputManifestPath, 3);
-
-const manifest = JSON.parse(fs.readFileSync(inputManifestPath, "utf8"));
-
-// Force desktop envelope (deterministic)
-manifest.viewport = manifest.viewport || { width: 1281, height: 800 };
-manifest.isMobile = false;
-manifest.hasTouch = false;
-manifest.deviceScaleFactor = manifest.deviceScaleFactor || 1;
-manifest.env_label = manifest.env_label || "DESKTOP";
-manifest.userAgent =
-  manifest.userAgent ||
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-const tmpManifestPath = path.join(repoRoot, "manifests", "_tmp_desktop_envelope.json");
-fs.writeFileSync(tmpManifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
-
-// Run canonical smoke runner, capture output so we can parse AF_ARTIFACT_DIR deterministically
-const nodeExe = process.execPath;
-const smokeRunnerPath = path.join(__dirname, "run_smoke.js");
-
-const r = spawnSync(nodeExe, [smokeRunnerPath, tmpManifestPath], {
-  cwd: repoRoot,
-  encoding: "utf8"
-});
-
-const out = (r.stdout || "") + (r.stderr || "");
-if (r.stdout) process.stdout.write(r.stdout);
-if (r.stderr) process.stderr.write(r.stderr);
-
-const exitCode = (r.status === null || r.status === undefined) ? 1 : r.status;
-if (exitCode !== 0) process.exit(exitCode);
-
-const artifactDir = parseArtifactDir(out);
-if (!artifactDir) fatal("[FATAL] Missing [AF_ARTIFACT_DIR] marker in run_smoke output", 4);
-
-const journalPath = path.join(artifactDir, "journal.ndjson");
-if (!fs.existsSync(journalPath)) fatal("[FATAL] journal.ndjson missing at: " + journalPath, 5);
-
-const envRecord = {
-  t: "ENV",
-  ts: new Date().toISOString(),
-  env_label: manifest.env_label,
-  viewport: manifest.viewport,
-  isMobile: manifest.isMobile,
-  hasTouch: manifest.hasTouch,
-  deviceScaleFactor: manifest.deviceScaleFactor,
-  userAgent: manifest.userAgent,
-  version: pkgVersion(),
-  git_sha: gitHeadSha()
-};
-
-fs.appendFileSync(journalPath, JSON.stringify(envRecord) + "\n", "utf8");
-console.log("[OK] ENV appended ->", journalPath);
-
-{
-  // AF_SEAL_BEGIN
-  const __afSealScript = path.join(repoRoot, "tools", "packet_seal.js");
-  const __afSealRes = spawnSync(nodeExe, [__afSealScript, artifactDir], { cwd: repoRoot, encoding: "utf8" });
-  if (__afSealRes.stdout) process.stdout.write(__afSealRes.stdout);
-  if (__afSealRes.stderr) process.stderr.write(__afSealRes.stderr);
-  if (__afSealRes.status !== 0) fatal("[FATAL] packet_seal failed for: " + artifactDir, 9);
-  // AF_SEAL_END
-}
-
-process.exit(0);
-
+main().catch(e => terminateExecution(String(e && e.stack ? e.stack : e)));
