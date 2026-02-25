@@ -1,0 +1,5 @@
+{
+    "note":  "Dual is executed by running smoke_desktop.json and smoke_mobile.json",
+    "desktop_manifest":  "manifests/smoke_desktop.json",
+    "mobile_manifest":  "manifests/smoke_mobile.json"
+}

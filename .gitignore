@@ -1,11 +1,36 @@
-﻿node_modules/
-artifacts/
-temp/
-.env
+﻿# AFDM: ZERO-LEAK SECURITY LAYER
+# VERSION: 2026.02.19-LOCKED
 
-# Forensic Hygiene: Block accidental command leaks
-ersmskirDesktopect
-how --name-only --oneline HEAD
-tatus
-*.bak
-*.tmp
+# Security & Secrets (Discovery Risk)
+.env
+.env.*
+secrets.json
+*.pem
+*.key
+auth_tokens/
+
+# Logic Dependencies (AI Template Bloat)
+node_modules/
+dist/
+build/
+.pnp*
+.yarn/
+
+# Forensic Artifacts (Matter-Specific Cache)
+captures/
+logs/
+*.log
+tmp/
+*.zip.tmp
+BUILDER_TRACKING_NOTE.txt
+
+# System Noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+@
+# Forensic Exhibit Data
+Keyboard-Traversal-Verification_Packet/
+runs/
+artifacts/

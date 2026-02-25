@@ -1,0 +1,19 @@
+﻿{
+  "min_file_count": 6,
+  "min_total_bytes": 12000,
+  "required_rel_files": [
+    "RUN_SUMMARY.txt"
+  ],
+  "buckets": [
+    {
+      "name": "at_least_one_core_artifact",
+      "any": [
+        "MANIFEST\\.json$",
+        "journal\\.ndjson$",
+        "packet_hash\\.txt$",
+        "TOOLING_HASHES\\.txt$",
+        "EVIDENCE\\.json$"
+      ]
+    }
+  ]
+}

@@ -1,3 +1,7 @@
+﻿// S8.B/C + S10.C: Viewport lock + clean state (intake-enforcement-v1)
+const AFDM_DESKTOP_VIEWPORT = { width: 1281, height: 800 };
+const AFDM_MOBILE_DEVICE    = 'iPhone 14'; // 390x844, DPR 3, WebKit
+
 const { chromium } = require('playwright');
 const fs = require('fs-extra');
 const crypto = require('crypto');
@@ -82,12 +86,22 @@ class SKUAEngine {
 
   async initialize() {
     this.browser = await chromium.launch({ headless: true });
+        // CONTEXT OVERRIDES: allow manifest to supply Playwright context options
+    // Used for mobile emulation signals (isMobile, hasTouch, userAgent, deviceScaleFactor, viewport).
+    const ctxOverrides = (this.manifest && this.manifest.playwright_context && typeof this.manifest.playwright_context === "object")
+      ? this.manifest.playwright_context
+      : {};
     this.context = await this.browser.newContext({
+      ...ctxOverrides,
       userAgent: "AccessForensics/SKU-A-Forensic-Observer/5.7.3",
       viewport: this.manifest.viewport,
       ignoreHTTPSErrors: true
     });
     this.page = await this.context.newPage();
+      // S10.C clean state
+      await this.context.clearCookies();
+      await this.context.clearPermissions();
+      await this.page.goto('about:blank', { waitUntil: 'networkidle' });
 
     await this.page.addInitScript(() => {
       window.__af_mutations = 0;
@@ -262,3 +276,6 @@ class SKUAEngine {
 }
 
 module.exports = SKUAEngine;
+
+
+
