@@ -1,4 +1,4 @@
-{
+﻿{
     "css_allowlist":  [
                           "color",
                           "display"
@@ -6,8 +6,8 @@
     "hash":  "00000000000000000000000000000000",
     "toolchain_id":  "bypass",
     "viewport":  {
-                     "height":  720,
-                     "width":  1280
+                     "height":  900,
+                     "width":  1366
                  },
     "allowed_selectors":  [
                               "#checkout-btn",
