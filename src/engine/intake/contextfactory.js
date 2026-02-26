@@ -4,7 +4,7 @@ const contextFactory = {
 
   getDesktopContextOptions() {
     return {
-      viewport:          { width: 1281, height: 800 },
+      viewport:          { width: 1366, height: 900 },
       userAgent:         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       deviceScaleFactor: 1,
       isMobile:          false,
@@ -29,3 +29,4 @@ const contextFactory = {
 };
 
 module.exports = contextFactory;
+

@@ -1,5 +1,5 @@
 ﻿// S8.B/C + S10.C: Viewport lock + clean state (intake-enforcement-v1)
-const AFDM_DESKTOP_VIEWPORT = { width: 1281, height: 800 };
+const AFDM_DESKTOP_VIEWPORT = { width: 1366, height: 900 };
 const AFDM_MOBILE_DEVICE    = 'iPhone 14'; // 390x844, DPR 3, WebKit
 
 const { chromium } = require('playwright');
@@ -276,6 +276,7 @@ class SKUAEngine {
 }
 
 module.exports = SKUAEngine;
+
 
 
 

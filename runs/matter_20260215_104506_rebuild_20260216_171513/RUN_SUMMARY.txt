@@ -1,8 +1,0 @@
-﻿CaseId: matter_20260215_104506
-Target: https://frenchconnection.com
-Deliverable: Deliverable_Packet_matter_20260215_104506.zip
-DeliverableContentSha256: ebd2697c5d857bc1f35fe74c8ed58deb9991801394c4ef7c023b62aef19375c7
-CreatedUtc: 2026-02-15T17:21:36Z
-CreatedLocal: 2026-02-15 12:21:36 -05:00
-RunFolder: C:\Users\mskir\Desktop\accessforensics-main\runs\matter_20260215_104506
-HashManifestExcludes: FILE_HASHES.sha256, RUN_SUMMARY.txt
