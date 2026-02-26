@@ -1,32 +1,33 @@
-﻿'use strict';
+"use strict";
+
+// Viewport values are sourced exclusively from canonical enums via locked.js.
+// deviceScaleFactor: 1 is set LAST, after any device profile merge, as a hard lock.
+const { getViewport } = require("./locked.js");
 
 const contextFactory = {
-
   getDesktopContextOptions() {
     return {
-      viewport:          { width: 1366, height: 900 },
-      userAgent:         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      deviceScaleFactor: 1,
+      viewport:          getViewport("DESKTOP"),
       isMobile:          false,
       hasTouch:          false,
-      locale:            'en-US',
-      timezoneId:        'America/New_York'
+      locale:            "en-US",
+      timezoneId:        "America/New_York",
+      deviceScaleFactor: 1
     };
   },
 
-  getMobileContextOptions() {
+  getMobileContextOptions(deviceProfile) {
+    const base = deviceProfile ? { ...deviceProfile } : {};
     return {
-      viewport:          { width: 390, height: 844 },
-      userAgent:         'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-      deviceScaleFactor: 3,
+      ...base,
+      viewport:          getViewport("MOBILE"),
       isMobile:          true,
       hasTouch:          true,
-      locale:            'en-US',
-      timezoneId:        'America/New_York'
+      locale:            "en-US",
+      timezoneId:        "America/New_York",
+      deviceScaleFactor: 1
     };
   }
-
 };
 
 module.exports = contextFactory;
-
