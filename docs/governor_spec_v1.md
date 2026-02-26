@@ -20,13 +20,13 @@ Therefore, any claim that the Matter Runner or hierarchical sealing is "already 
 ## 1. Current Deterministic Envelopes (What Exists)
 Desktop wrapper forces:
 - env_label: DESKTOP
-- viewport: 1366x768 (default)
+- viewport: 1366x900 (default)
 - isMobile: false
 - hasTouch: false
 
 Mobile wrapper forces:
 - env_label: MOBILE_EMULATION
-- viewport: 390x844 (default)
+- viewport: 393x852 (default)
 - isMobile: true
 - hasTouch: true
 
@@ -62,3 +62,4 @@ No "Matter Runner" may be merged unless:
 - docs/governor_spec_v1.md exists in repo
 - the runner produces index.json and packet_hash.txt using deterministic ordering
 - the runner produces artifacts without timestamps embedded in filenames (future patch)
+
