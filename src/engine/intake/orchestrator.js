@@ -1,12 +1,9 @@
-﻿'use strict';
+'use strict';
 const { chromium, webkit } = require('playwright');
 const path = require('path');
 const fs   = require('fs');
 
-const {
-  QUALIFYING_SET, RUN_CAP, SUFFICIENCY_THRESHOLD,
-  validateOutcome, validateConstraintClass
-} = require('./enums.js');
+const { ENUMS, QUALIFYING_SET, RUN_CAP, SUFFICIENCY_THRESHOLD, validateOutcome, validateConstraintClass } = require('./locked.js');
 const { validateNote }                           = require('./notegate.js');
 const { normalizeToRunUnits, validateAtomicity } = require('./complaintnormalizer.js');
 const { computeDetermination }                   = require('./determination.js');
