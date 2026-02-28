@@ -1,4 +1,5 @@
-﻿"use strict";
+const contextFactory = require('../src/engine/intake/contextfactory.js');
+"use strict";
 const fs = require("fs");
 const path = require("path");
 const { chromium, devices } = require("playwright");
@@ -6,7 +7,7 @@ const { chromium, devices } = require("playwright");
 async function runCapture(env, url, outDir, skuLabel) {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ 
-    viewport: { width: 1440, height: 900 },
+    viewport: contextFactory.getDesktopContextOptions().viewport,
     ignoreHTTPSErrors: true,
     recordHar: { path: path.join(outDir, "network.har"), content: "embed" }
   });
