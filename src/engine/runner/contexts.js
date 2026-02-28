@@ -1,20 +1,19 @@
-﻿const { chromium, webkit, devices } = require('playwright');
+'use strict';
 
-/**
- * SECTION 8: EXECUTION CONTEXT RIGOR [cite: 8]
- * Desktop: 1366x900 (Locked baseline)
- * Mobile: 390x844 (Anchored Only)
- */
-const AFDM_DESKTOP_CONTEXT = {
-  viewport:          { width: 1366, height: 900 },
-  deviceScaleFactor: 1,
-  isMobile:          false,
-  hasTouch:          false,
+// Runner contexts must not define viewport/DPR baselines.
+// They must consume the canonical intake context builder.
+const contextFactory = require('../intake/contextfactory.js');
+
+function getDesktopContext() {
+  return contextFactory.getDesktopContextOptions();
+}
+
+function getMobileContext(deviceProfile) {
+  // contextFactory already hard-locks viewport + deviceScaleFactor after profile merge
+  return contextFactory.getMobileContextOptions(deviceProfile);
+}
+
+module.exports = {
+  getDesktopContext,
+  getMobileContext
 };
-
-const AFDM_MOBILE_CONTEXT = {
-  ...devices['iPhone 14'],
-};
-
-module.exports = { AFDM_DESKTOP_CONTEXT, AFDM_MOBILE_CONTEXT };
-

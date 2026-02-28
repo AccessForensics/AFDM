@@ -1,0 +1,21 @@
+name: intake-guardrails
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - intake
+
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        run: npm ci
+      - name: Guardrails check
+        run: node tools/guardrails_check.js
