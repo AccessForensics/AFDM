@@ -4,12 +4,22 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-function walk(dir) {
+function walk(rootDir) {
   const out = [];
-  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, ent.name);
-    if (ent.isDirectory()) out.push(...walk(p));
-    else out.push(p);
+  const ignores = new Set(['.git', 'archive', 'node_modules', 'dist', 'build', '.yarn', '.pnpm']);
+
+  const stack = [rootDir];
+  while (stack.length) {
+    const dir = stack.pop();
+    const ents = fs.readdirSync(dir, { withFileTypes: true });
+
+    for (const ent of ents) {
+      if (ent.isDirectory() && ignores.has(ent.name)) continue;
+
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) stack.push(p);
+      else out.push(p);
+    }
   }
   return out;
 }
