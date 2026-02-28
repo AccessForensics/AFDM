@@ -1,7 +1,7 @@
 const ENUMS = require('./intake/enums.js');
 // S8.B/C + S10.C: Viewport lock + clean state (intake-enforcement-v1)
-const AFDM_DESKTOP_VIEWPORT = { width: 1366, height: 900 };
-const AFDM_MOBILE_DEVICE    = 'iPhone 14'; // 390x844, DPR 3, WebKit
+const AFDM_DESKTOP_VIEWPORT = (ENUMS.VIEWPORT ? ENUMS.VIEWPORT.DESKTOP : ENUMS.CONTEXTS.DESKTOP.viewport);
+const AFDM_MOBILE_DEVICE    = 'iPhone 14'; // canonical viewport, DPR locked
 
 const { chromium } = require('playwright');
 const fs = require('fs-extra');
