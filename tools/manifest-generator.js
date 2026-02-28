@@ -24,7 +24,9 @@ function main() {
   const smokeDesktopPath = path.join(manifestsDir, 'smoke_desktop.json');
   const smokeMobilePath  = path.join(manifestsDir, 'smoke_mobile.json');
 
-  const smokeDesktop = {
+  
+  const smokePath       = path.join(manifestsDir, 'smoke.json');
+const smokeDesktop = {
     matter_id: 'smoke',
     strict_mode: true,
     url: 'https://example.com',
@@ -43,7 +45,8 @@ function main() {
   writeJson(smokeDesktopPath, smokeDesktop);
   writeJson(smokeMobilePath, smokeMobile);
 
-  console.log('[OK] wrote smoke manifests from canonical enums');
+    writeJson(smokePath, smokeDesktop);
+console.log('[OK] wrote smoke manifests from canonical enums');
 }
 
 if (require.main === module) main();
