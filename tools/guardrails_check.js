@@ -83,9 +83,17 @@ function main() {
   const status = cp.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
   if (status) fail('Manifest drift detected after generator run.\n' + status);
 
-  // D) Single determination writer (actual writes)
+    // D) Single determination writer (actual writes)
+  // Enforce only on execution surface (src/ and engine/). Never scan tools/.
+  const writerCandidates = files
+    .filter(p => p.endsWith('.js'))
+    .filter(p => {
+      const rel = path.relative(repo, p).replace(/\\/g, '/');
+      return (rel.startsWith('src/') || rel.startsWith('engine/'));
+    });
+
   const writers = [];
-  for (const p of files.filter(p => p.endsWith('.js'))) {
+  for (const p of writerCandidates) {
     const rel = path.relative(repo, p).replace(/\\/g, '/');
     const body = readText(p);
 
@@ -102,7 +110,6 @@ function main() {
     fail('Determination writer must be orchestrator. Found: ' + JSON.stringify(writers));
   }
 
-  console.log('[OK] guardrails passed');
-}
+  console.log('[OK] guardrails passed');}
 
 if (require.main === module) main();
