@@ -51,7 +51,12 @@ function main() {
 
   const files = walk(repo)
     .filter(p => !p.includes(path.join(repo, '.git')))
+    .filter(p => !p.includes(path.join(repo, 'node_modules')))
+    .filter(p => !p.includes(path.join(repo, 'dist')))
+    .filter(p => !p.includes(path.join(repo, 'build')))
     .filter(p => !p.includes(path.join(repo, 'archive')))
+    .filter(p => !p.includes(path.join(repo, '.yarn')))
+    .filter(p => !p.includes(path.join(repo, '.pnpm')))
     .filter(p => /\.(js|json|md|txt|yml|yaml)$/i.test(p));
 
   for (const p of files) {
