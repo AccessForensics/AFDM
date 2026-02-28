@@ -25,8 +25,12 @@ function fail(msg) {
 
 function main() {
   const repo = process.cwd();
-
-  // A) src enums file must be exact allowlisted one-liner
+  // HARD FAIL: legacy manifests/smoke.json must not exist in governed tree
+  const legacySmoke = path.join(repo, 'manifests', 'smoke.json');
+  if (fs.existsSync(legacySmoke)) {
+    fail('LEGACY_SMOKE_JSON_PRESENT: remove manifests/smoke.json (use smoke_desktop.json + smoke_mobile.json only)');
+  }
+// A) src enums file must be exact allowlisted one-liner
   const allowlisted = "module.exports = require('../../../engine/intake/enums.js');\n";
   const srcEnums = path.join(repo, 'src', 'engine', 'intake', 'enums.js');
   if (!fs.existsSync(srcEnums)) fail('Missing ' + srcEnums);
