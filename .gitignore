@@ -34,3 +34,6 @@ Thumbs.db
 Keyboard-Traversal-Verification_Packet/
 runs/
 artifacts/
+
+*.bak
+
