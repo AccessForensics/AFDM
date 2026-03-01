@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const contextFactory = {
 
@@ -16,9 +16,9 @@ const contextFactory = {
 
   getMobileContextOptions() {
     return {
-      viewport:          { width: 390, height: 844 },
+      viewport: { width: 393, height: 852 },
       userAgent:         'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-      deviceScaleFactor: 3,
+      deviceScaleFactor: 1,
       isMobile:          true,
       hasTouch:          true,
       locale:            'en-US',
