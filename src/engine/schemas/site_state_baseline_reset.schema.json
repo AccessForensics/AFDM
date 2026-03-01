@@ -1,0 +1,19 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Section 21 — SiteStateBaselineReset Schema (Locked)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "matter_id","start_url",
+    "prior_normalized_dom_hash","new_normalized_dom_hash",
+    "reset_timestamp_local","reset_timestamp_epoch_ms"
+  ],
+  "properties": {
+    "matter_id":                   { "type": "string", "minLength": 1 },
+    "start_url":                   { "type": "string", "format": "uri" },
+    "prior_normalized_dom_hash":   { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "new_normalized_dom_hash":     { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "reset_timestamp_local":       { "type": "string", "minLength": 19 },
+    "reset_timestamp_epoch_ms":    { "type": "integer", "minimum": 0 }
+  }
+}

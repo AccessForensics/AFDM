@@ -1,0 +1,73 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Appendix A3 — CaptureUnit Schema (Locked)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "matter_id","allegation_id","context_id","capture_unit_id","run_id",
+    "start_url","final_url","outcome_label","constraint_class",
+    "timestamps_start_local","timestamps_start_epoch_ms",
+    "timestamps_end_local","timestamps_end_epoch_ms",
+    "operator_id","interaction_plan_ref",
+    "navimpediment_retry","navimpediment_retry_scope_delta_id",
+    "pre_change_state","site_state_change_event_id"
+  ],
+  "properties": {
+    "matter_id":          { "type": "string", "minLength": 1 },
+    "allegation_id":      { "type": "string", "minLength": 1 },
+    "context_id":         { "type": "string", "enum": ["desktop_baseline","mobile_baseline","authorized_reflow"] },
+    "capture_unit_id":    { "type": "string", "minLength": 1 },
+    "run_id":             { "type": "string", "minLength": 1 },
+    "start_url":          { "type": "string", "format": "uri" },
+    "final_url":          { "type": "string", "format": "uri" },
+    "outcome_label":      { "type": "string", "enum": [
+      "Observed as asserted","Not observed as asserted",
+      "Constrained","Insufficiently specified for bounded execution"
+    ]},
+    "constraint_class":                   { "type": "string" },
+    "timestamps_start_local":             { "type": "string", "minLength": 19 },
+    "timestamps_start_epoch_ms":          { "type": "integer", "minimum": 0 },
+    "timestamps_end_local":               { "type": "string", "minLength": 19 },
+    "timestamps_end_epoch_ms":            { "type": "integer", "minimum": 0 },
+    "operator_id":                        { "type": "string", "minLength": 1 },
+    "interaction_plan_ref":               { "type": "string", "pattern": "^[^:]+::[^:]+::.+$" },
+    "navimpediment_retry":                { "type": "boolean" },
+    "navimpediment_retry_scope_delta_id": { "type": "string" },
+    "pre_change_state":                   { "type": "boolean" },
+    "site_state_change_event_id":         { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "outcome_label": { "const": "Constrained" } },
+        "required": ["outcome_label"]
+      },
+      "then": {
+        "properties": { "constraint_class": { "type": "string", "enum": [
+          "BOTMITIGATION","AUTHWALL","GEOBLOCK","HARDCRASH","NAVIMPEDIMENT"
+        ]}}
+      },
+      "else": {
+        "properties": { "constraint_class": { "type": "string", "const": "" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "pre_change_state": { "const": false } },
+        "required": ["pre_change_state"]
+      },
+      "then": {
+        "properties": { "site_state_change_event_id": { "type": "string", "minLength": 1 } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "pre_change_state": { "const": true } },
+        "required": ["pre_change_state"]
+      },
+      "then": {
+        "properties": { "site_state_change_event_id": { "type": "string", "const": "" } }
+      }
+    }
+  ]
+}
