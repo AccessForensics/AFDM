@@ -1,0 +1,25 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Section 21 — SiteStateChangeEvent Schema (Locked)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "site_state_change_event_id","matter_id","start_url",
+    "change_detected_at_local","change_detected_at_epoch_ms",
+    "baseline_normalized_dom_hash","current_normalized_dom_hash",
+    "changed_headers",
+    "capture_units_completed_before_change","capture_units_pending_at_change"
+  ],
+  "properties": {
+    "site_state_change_event_id":          { "type": "string", "minLength": 1 },
+    "matter_id":                           { "type": "string", "minLength": 1 },
+    "start_url":                           { "type": "string", "format": "uri" },
+    "change_detected_at_local":            { "type": "string", "minLength": 19 },
+    "change_detected_at_epoch_ms":         { "type": "integer", "minimum": 0 },
+    "baseline_normalized_dom_hash":        { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "current_normalized_dom_hash":         { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "changed_headers":                     { "type": "object" },
+    "capture_units_completed_before_change": { "type": "array", "items": { "type": "string" } },
+    "capture_units_pending_at_change":       { "type": "array", "items": { "type": "string" } }
+  }
+}

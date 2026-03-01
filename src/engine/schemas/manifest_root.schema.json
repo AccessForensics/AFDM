@@ -1,0 +1,44 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Packet Manifest Root Schema (Locked)",
+  "description": "Section 15 + Appendix A4. additionalProperties: false. All root fields explicitly declared. New fields require PR, version bump, changelog. AUDIT NOTE: third_party_domains declared as unconstrained pending verification against thirdpartydomains.schema.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["packet_phase"],
+  "properties": {
+    "packet_phase":               { "type": "string", "enum": ["intake", "partial", "full_execution"] },
+    "matter_id":                  { "type": "string", "minLength": 1 },
+    "packet_version":             { "type": "string", "minLength": 1 },
+    "packet_hash":                { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "scope_anchor":               { "type": "string", "minLength": 1 },
+    "scope_deltas":               { "type": "array" },
+    "interaction_plans":          { "type": "array" },
+    "capture_units":              { "type": "array" },
+    "third_party_domains":        {},
+    "site_state_baseline":        { "type": "object" },
+    "site_state_baseline_resets": { "type": "array" },
+    "site_state_change_events":   { "type": "array" },
+    "cross_change_notation":      { "type": "string" },
+    "operator_declaration":       { "type": "object" },
+    "transmittal_record":         { "type": "object" },
+    "created_at_local":           { "type": "string" },
+    "created_at_epoch_ms":        { "type": "integer" },
+    "sealed_at_local":            { "type": "string" },
+    "sealed_at_epoch_ms":         { "type": "integer" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "packet_phase": { "const": "full_execution" } },
+        "required": ["packet_phase"]
+      },
+      "then": {
+        "required": ["matter_id", "packet_version", "interaction_plans", "capture_units"],
+        "properties": {
+          "interaction_plans": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+          "capture_units":     { "type": "array", "minItems": 1, "items": { "type": "object" } }
+        }
+      }
+    }
+  ]
+}
