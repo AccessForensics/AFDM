@@ -202,7 +202,15 @@ const ctx = await browser.newContext(ctxOpts);
     determinationnote: determination.note,
     generatedutc:      new Date().toISOString()
   };
-  fs.writeFileSync(
+  
+  // Template 3 linkage enforcement (locked)
+  // If external determination is Desktop eligible but Mobile baseline constrained, require a constrained Mobile run with valid constraintclass.
+  const __detText = String(externalResult.determination || externalResult.category || externalResult.template || '');
+  if (__detText.includes('MOBILE BASELINE CONSTRAINED')) {
+    const __lockedConstraintSet = new Set(Object.values((CANON_ENUMS.CONSTRAINT_CLASS || CANON_ENUMS.CONSTRAINT || {})));
+    assertTemplate3Preconditions(mobileInScope, completedRuns, __lockedConstraintSet);
+  }
+fs.writeFileSync(
     path.join(outputDir, 'intakeresult-external.json'),
     
     const __externalText = JSON.stringify(externalResult, null, 2) + '\n';
