@@ -12,7 +12,7 @@ async function assertContextIntegrity(page, expectedContext) {
 
   const expW = expectedContext.width;
   const expH = expectedContext.height;
-  const expD = expectedContext.deviceScaleFactor;
+  const expD = (expectedContext.deviceScaleFactor === undefined || expectedContext.deviceScaleFactor === null) ? 1 : expectedContext.deviceScaleFactor;
 
   if (vp.width !== expW) {
     throw new Error(`CONTEXT_INTEGRITY: width expected ${expW}, got ${vp.width}`);

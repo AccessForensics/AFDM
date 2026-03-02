@@ -1,4 +1,6 @@
-﻿'use strict';
+'use strict';
+
+const { assertContextIntegrity } = require('./assert_context_integrity.js');
 const fs   = require('fs');
 const path = require('path');
 const { executeIntake } = require('./orchestrator.js');
@@ -10,6 +12,8 @@ async function main() {
 
   async function runExecutor(browser, ctx, run, url) {
     const page = await ctx.newPage();
+  if (!expectedContext) { throw new Error('CONTEXT_INTEGRITY: expectedContext missing'); }
+  await assertContextIntegrity(page, expectedContext);
     await page.goto(url, { waitUntil: 'networkidle' });
     // TODO: replace with real selector checks — return one of:
     //   'Observed as asserted'

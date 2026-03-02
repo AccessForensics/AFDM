@@ -127,10 +127,13 @@ async function executeIntake(config) {
       const ctxOpts = isMobile
         ? { ...contextFactory.getMobileContextOptions(),  ignoreHTTPSErrors: true }
         : { ...contextFactory.getDesktopContextOptions(), ignoreHTTPSErrors: true };
-      const ctx = await browser.newContext(ctxOpts);
+      
+      if (!ctxOpts || !ctxOpts.viewport) { throw new Error('CONTEXT_INTEGRITY: ctxOpts.viewport missing'); }
+      const __expectedContext = { width: ctxOpts.viewport.width, height: ctxOpts.viewport.height };
+const ctx = await browser.newContext(ctxOpts);
 
       try {
-        const outcomeLabel = await runExecutor(browser, ctx, run, targetUrl);
+        const outcomeLabel = await runExecutor(browser, ctx, run, targetUrl, __expectedContext);
         validateOutcome(outcomeLabel);
         run.outcome = outcomeLabel;
 
@@ -197,7 +200,10 @@ async function executeIntake(config) {
   };
   fs.writeFileSync(
     path.join(outputDir, 'intakeresult-external.json'),
-    JSON.stringify(externalResult, null, 2) + '\n', 'utf8'
+    
+    const __externalText = JSON.stringify(externalResult, null, 2) + '\n';
+    lintDeterminationOutput(__externalText, (externalResult && externalResult.matter_id) ? externalResult.matter_id : ((internalResult && internalResult.matter_id) ? internalResult.matter_id : 'UNKNOWN'));
+    __externalText, 'utf8'
   );
 
   return { internal: internalResult, external: externalResult };
