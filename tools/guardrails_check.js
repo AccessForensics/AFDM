@@ -1,5 +1,26 @@
 'use strict';
 
+/**
+ * NO_BAK_FILES_RULE (LOCKED)
+ * Tracked backup artifacts are prohibited. Hard-fail if any tracked file contains ".bak" in its name.
+ */
+function assertNoTrackedBakFiles() {
+  const { execSync } = require('child_process');
+  const out = execSync('git ls-files', { encoding: 'utf8' });
+  const files = out.split(/\r?\n/).filter(Boolean);
+  const bad = files.filter(f => /\.bak/i.test(f));
+  if (bad.length) {
+    throw new Error(
+      '[FAIL] Tracked backup files detected (prohibited):\n' +
+      bad.map(f => '  - ' + f).join('\n')
+    );
+  }
+}
+
+// Invoke early so CI fails fast
+assertNoTrackedBakFiles();
+
+
 const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
