@@ -1,6 +1,10 @@
 'use strict';
 
 
+
+
+const CANON_ENUMS = require('../../../engine/intake/enums.js');
+const { assertTemplate3Preconditions } = require('./assert_template3_preconditions.js');
 const { lintDeterminationOutput } = require('./lint_determination_output.js');
 const { assertContextIntegrity } = require('./assert_context_integrity.js');
 const { chromium, webkit } = require('playwright');
