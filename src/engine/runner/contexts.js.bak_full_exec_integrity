@@ -1,7 +1,5 @@
 'use strict';
 
-
-const { assertContextIntegrity } = require('./assert_context_integrity.js');
 // Runner contexts must not define viewport/DPR baselines.
 // They must consume the canonical intake context builder.
 const contextFactory = require('../intake/contextfactory.js');
