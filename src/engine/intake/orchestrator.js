@@ -1,4 +1,8 @@
-﻿'use strict';
+'use strict';
+
+
+const { lintDeterminationOutput } = require('./lint_determination_output.js');
+const { assertContextIntegrity } = require('./assert_context_integrity.js');
 const { chromium, webkit } = require('playwright');
 const path = require('path');
 const fs   = require('fs');
