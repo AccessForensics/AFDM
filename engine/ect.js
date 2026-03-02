@@ -1,3 +1,5 @@
+const { assertContextIntegrity } = require('../src/engine/runner/assert_context_integrity.js');
+
 const ENUMS = require('./intake/enums.js');
 // S8.B/C + S10.C: Viewport lock + clean state (intake-enforcement-v1)
 const AFDM_DESKTOP_VIEWPORT = (ENUMS.VIEWPORT ? ENUMS.VIEWPORT.DESKTOP : ENUMS.CONTEXTS.DESKTOP.viewport);
