@@ -37,3 +37,7 @@ artifacts/
 
 *.bak
 
+
+# Backup/patch artifacts (do not track)
+*.bak*
+
