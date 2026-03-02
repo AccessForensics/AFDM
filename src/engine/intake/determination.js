@@ -1,4 +1,7 @@
-﻿'use strict';
+'use strict';
+
+const { assertTemplate3Preconditions } = require('./determination_preconditions.js');
+
 const { QUALIFYING_SET } = require('./enums.js');
 
 function computeDetermination(runUnits, mobileInScope, mobileBarrierNote) {
