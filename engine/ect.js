@@ -1,3 +1,5 @@
+const { assertContextIntegrity } = require('../src/engine/runner/assert_context_integrity.js');
+
 const ENUMS = require('./intake/enums.js');
 // S8.B/C + S10.C: Viewport lock + clean state (intake-enforcement-v1)
 const AFDM_DESKTOP_VIEWPORT = (ENUMS.VIEWPORT ? ENUMS.VIEWPORT.DESKTOP : ENUMS.CONTEXTS.DESKTOP.viewport);
@@ -92,13 +94,15 @@ class SKUAEngine {
     const ctxOverrides = (this.manifest && this.manifest.playwright_context && typeof this.manifest.playwright_context === "object")
       ? this.manifest.playwright_context
       : {};
-    this.context = await this.browser.newContext({
+    const __ctxOpts = {
       ...ctxOverrides,
       userAgent: "AccessForensics/SKU-A-Forensic-Observer/5.7.3",
       viewport: this.manifest.viewport,
       ignoreHTTPSErrors: true
-    });
+    };
+    this.context = await this.browser.newContext(__ctxOpts);
     this.page = await this.context.newPage();
+    await assertContextIntegrity(this.page, __ctxOpts);
       // S10.C clean state
       await this.context.clearCookies();
       await this.context.clearPermissions();

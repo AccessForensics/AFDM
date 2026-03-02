@@ -210,12 +210,18 @@ const ctx = await browser.newContext(ctxOpts);
     const __lockedConstraintSet = new Set(Object.values((CANON_ENUMS.CONSTRAINT_CLASS || CANON_ENUMS.CONSTRAINT || {})));
     assertTemplate3Preconditions(mobileInScope, completedRuns, __lockedConstraintSet);
   }
+const __externalText = JSON.stringify(externalResult, null, 2) + '\n';
+lintDeterminationOutput(
+  __externalText,
+  (externalResult && externalResult.matter_id)
+    ? externalResult.matter_id
+    : ((internalResult && internalResult.matter_id) ? internalResult.matter_id : 'UNKNOWN')
+);
 fs.writeFileSync(
-    path.join(outputDir, 'intakeresult-external.json'),
-    
-    const __externalText = JSON.stringify(externalResult, null, 2) + '\n';
-    lintDeterminationOutput(__externalText, (externalResult && externalResult.matter_id) ? externalResult.matter_id : ((internalResult && internalResult.matter_id) ? internalResult.matter_id : 'UNKNOWN'));
-    __externalText, 'utf8'
+  path.join(outputDir, 'intakeresult-external.json'),
+  __externalText,
+  'utf8'
+);__externalText, 'utf8'
   );
 
   return { internal: internalResult, external: externalResult };
