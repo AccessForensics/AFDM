@@ -129,7 +129,7 @@ async function executeIntake(config) {
         : { ...contextFactory.getDesktopContextOptions(), ignoreHTTPSErrors: true };
       
       if (!ctxOpts || !ctxOpts.viewport) { throw new Error('CONTEXT_INTEGRITY: ctxOpts.viewport missing'); }
-      const __expectedContext = { width: ctxOpts.viewport.width, height: ctxOpts.viewport.height, deviceScaleFactor: 1 };
+      const __expectedContext = { width: ctxOpts.viewport.width, height: ctxOpts.viewport.height };
 const ctx = await browser.newContext(ctxOpts);
 
       try {
