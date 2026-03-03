@@ -1,3 +1,6 @@
+// Pull locked context options from canonical intake context builder (allowlisted).
+const contextFactory = require('./src/engine/intake/contextfactory.js');
+
 const { AFDM_DESKTOP_CONTEXT, AFDM_MOBILE_CONTEXT } = require('./src/engine/runner/contexts');
 const { logForensicEnvironment } = require('./src/engine/utils/logger');
 const { chromium, webkit } = require('playwright');
