@@ -1,4 +1,4 @@
-// Pull locked context options from canonical intake context builder (allowlisted).
+﻿// Pull locked context options from canonical intake context builder (allowlisted).
 const contextFactory = require('./src/engine/intake/contextfactory.js');
 
 const { logForensicEnvironment } = require('./src/engine/utils/logger');
@@ -10,16 +10,24 @@ async function runSmokeTest() {
   // Validate Desktop Context
   console.log('Testing Desktop (Boundary Neutrality)...');
   const browserD = await chromium.launch();
-  const contextD = await browserD.newContext(contextFactory.getDesktopContextOptions());
-  await logForensicEnvironment(contextD, browserD, 'SMOKE_TEST_DESKTOP');
-  await browserD.close();
+  try {
+    const contextD = await browserD.newContext(contextFactory.getDesktopContextOptions());
+    await logForensicEnvironment(contextD, browserD, 'SMOKE_TEST_DESKTOP');
+    await contextD.close();
+  } finally {
+    await browserD.close();
+  }
 
   // Validate Mobile Context
   console.log('Testing Mobile (Anchored Reference)...');
   const browserM = await webkit.launch();
-  const contextM = await browserM.newContext(contextFactory.getMobileContextOptions());
-  await logForensicEnvironment(contextM, browserM, 'SMOKE_TEST_MOBILE');
-  await browserM.close();
+  try {
+    const contextM = await browserM.newContext(contextFactory.getMobileContextOptions());
+    await logForensicEnvironment(contextM, browserM, 'SMOKE_TEST_MOBILE');
+    await contextM.close();
+  } finally {
+    await browserM.close();
+  }
 
   console.log('\x1b[32m%s\x1b[0m', '--- INTEGRITY CHECK PASSED: V3.1 HARDLOCK VERIFIED ---');
 }
