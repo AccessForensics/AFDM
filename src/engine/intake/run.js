@@ -1,9 +1,11 @@
-'use strict';
+﻿'use strict';
 
 const { assertContextIntegrity } = require('./assert_context_integrity.js');
 const fs   = require('fs');
 const path = require('path');
 const { executeIntake } = require('./orchestrator.js');
+
+const { getDomain } = require('tldts');
 
 async function main() {
   const outDir    = path.join(process.cwd(), '_intake_out');
@@ -18,7 +20,50 @@ async function main() {
     // TODO: replace with real selector checks — return one of:
     //   'Observed as asserted'
     //   'Not observed as asserted'
-    //   'Constrained'  (also set run.constraintclass to AUTHWALL|BOTMITIGATION|GEOBLOCK|HARDCRASH|NAVIMPEDIMENT)
+    /**
+ * Doctrine 4.3 [LOCKED]
+ * mobile_baseline_top_document_loaded is true IFF:
+ *  - page.goto to asserted origin resolves without throwing
+ *  - stable top level document exists, document.location.origin readable and non-empty
+ *  - resolved origin matches asserted OR is accepted redirect endpoint within same eTLD+1
+ * false if ANY failure above
+ *
+ * Note: bot/auth interstitial that still yields a readable document sets this TRUE (path-specific),
+ * because the top-level document exists and origin is readable.
+ */
+async function __computeMobileBaselineTopDocumentLoaded(page, assertedOrigin, navSucceeded) {
+  try {
+    if (!navSucceeded) return false;
+
+    // Must have readable, non-empty document.location.origin
+    const resolvedOrigin = await page.evaluate(() => {
+      try {
+        return (document && document.location && document.location.origin) ? String(document.location.origin) : "";
+      } catch (e) {
+        return "";
+      }
+    });
+
+    if (!resolvedOrigin || resolvedOrigin.trim() === "") return false;
+
+    // Must match asserted origin exactly OR same registrable domain (same eTLD+1)
+    const asserted = new URL(assertedOrigin);
+    const resolved = new URL(resolvedOrigin);
+
+    if (resolved.origin === asserted.origin) return true;
+
+    const aDom = getDomain(asserted.hostname);
+    const rDom = getDomain(resolved.hostname);
+
+    if (!aDom || !rDom) return false;
+    if (aDom !== rDom) return false;
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+//   'Constrained'  (also set run.constraintclass to AUTHWALL|BOTMITIGATION|GEOBLOCK|HARDCRASH|NAVIMPEDIMENT)
     //   'Insufficiently specified for bounded execution'
     await page.close();
     return 'Observed as asserted';
@@ -43,3 +88,4 @@ async function main() {
 }
 
 main().catch(err => { console.error('INTAKE_ERROR:', err.message); process.exit(1); });
+
