@@ -1,5 +1,6 @@
-'use strict';
+﻿'use strict';
 
+let __runSeq = 0;
 
 
 
@@ -46,6 +47,8 @@ async function executeIntake(config) {
       outcome:              null,
       context:              null,
       constraintclass:      null,
+      run_sequence:      null,
+      mobile_baseline_top_document_loaded: null,
       note:                 null,
       mobileanchorbasis:    null,
       tsstart:              null,
@@ -118,7 +121,10 @@ async function executeIntake(config) {
 
       if (run.skipped) {
         run.tsend = new Date().toISOString();
-        completedRuns.push(run);
+              // Doctrine 4.3 [LOCKED]: deterministic run sequencing
+      __runSeq += 1;
+      run.run_sequence = __runSeq;
+completedRuns.push(run);
         continue;
       }
 
@@ -207,9 +213,23 @@ const ctx = await browser.newContext(ctxOpts);
   // If external determination is Desktop eligible but Mobile baseline constrained, require a constrained Mobile run with valid constraintclass.
   const __detText = String(externalResult.determination || externalResult.category || externalResult.template || '');
   if (__detText.includes('MOBILE BASELINE CONSTRAINED')) {
-    const __lockedConstraintSet = new Set(Object.values((CANON_ENUMS.CONSTRAINT_CLASS || CANON_ENUMS.CONSTRAINT || {})));
+    // Doctrine 4.3 [LOCKED] Template 3 gate, enforced strictly on FIRST Mobile RUNUNIT (run_sequence=2)
+    // Invariant: when Mobile in scope, run_sequence 1 is Desktop and 2 is Mobile
+    const ru1 = completedRuns.find(r => r && r.run_sequence === 1);
+    const ru2 = completedRuns.find(r => r && r.run_sequence === 2);
+
+    if (!ru1 || !ru2) {
+      throw new Error('TEMPLATE3_PRECONDITION: Missing run_sequence 1 or 2 required for Desktop then Mobile');
+    }
+    if (String(ru1.context).toLowerCase() !== 'desktop') {
+      throw new Error('TEMPLATE3_PRECONDITION: When Mobile in scope, run_sequence 1 must be Desktop');
+    }
+    if (String(ru2.context).toLowerCase() !== 'mobile') {
+      throw new Error('TEMPLATE3_PRECONDITION: When Mobile in scope, run_sequence 2 must be Mobile');
+    }
+
     assertTemplate3Preconditions(mobileInScope, completedRuns, __lockedConstraintSet);
-  }
+}
 const __externalText = JSON.stringify(externalResult, null, 2) + '\n';
 lintDeterminationOutput(
   __externalText,
@@ -228,3 +248,4 @@ fs.writeFileSync(
 }
 
 module.exports = { executeIntake };
+
