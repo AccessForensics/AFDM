@@ -4,7 +4,8 @@
   "description": "Hardened mechanical observer for ADA Title III litigation capture.",
   "main": "engine/ect.js",
   "scripts": {
-    "gate:smoke": "echo gate-smoke placeholder"
+    "gate:smoke": "echo gate-smoke placeholder",
+    "test": "jest"
   },
   "dependencies": {
     "fs-extra": "^11.2.0",
