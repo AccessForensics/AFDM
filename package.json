@@ -11,5 +11,8 @@
     "fs-extra": "^11.2.0",
     "playwright": "^1.41.0",
     "tldts": "^7.0.24"
+  },
+  "devDependencies": {
+    "jest": "29.7.0"
   }
 }
