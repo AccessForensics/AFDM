@@ -26,7 +26,7 @@ test("Template 3 prohibited when first Mobile constraintclass is NAVIMPEDIMENT",
 
 test("Template 3 prohibited when first Mobile baseline_loaded=true", () => {
   const runs = mkRuns({ mobileOutcome: "Constrained", cc: "AUTHWALL", loaded: true });
-  expect(() => assertTemplate3Preconditions(true, runs, mkSet())).toThrow(/baseline/);
+  expect(() => assertTemplate3Preconditions(true, runs, mkSet())).toThrow(/TEMPLATE3_PRECONDITION/);
 });
 
 test("Template 3 prohibited when first Mobile is not Constrained", () => {
