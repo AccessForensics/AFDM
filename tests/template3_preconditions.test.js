@@ -1,8 +1,5 @@
 'use strict';
 
-const test = require('node:test');
-const assert = require('node:assert/strict');
-
 const { assertTemplate3Preconditions } = require('../src/engine/intake/assert_template3_preconditions.js');
 
 function mkSet() {
@@ -12,38 +9,38 @@ function mkSet() {
 test('Template 3 emits when all preconditions satisfied', () => {
   const mobileInScope = true;
   const completedRuns = [
-    { context: 'desktop', outcome: 'Observed as asserted' },
-    { context: 'mobile', outcome: 'Constrained', constraintclass: 'BOTMITIGATION', skipped: false }
+    { context: 'desktop', run_sequence: 1, outcome: 'Observed' },
+    { context: 'mobile', run_sequence: 2, outcome: 'Constrained', constraintclass: 'BOTMITIGATION', mobile_baseline_top_document_loaded: false }
   ];
-  assert.equal(assertTemplate3Preconditions(mobileInScope, completedRuns, mkSet()), true);
+  expect(assertTemplate3Preconditions(mobileInScope, completedRuns, mkSet())).toBe(true);
 });
 
 test('Template 3 throws when Mobile run exists but outcome is not Constrained', () => {
   const mobileInScope = true;
   const completedRuns = [
-    { context: 'mobile', outcome: 'Not observed as asserted', skipped: false }
+    { context: 'desktop', run_sequence: 1, outcome: 'Observed' },
+    { context: 'mobile', run_sequence: 2, outcome: 'Not observed as asserted', mobile_baseline_top_document_loaded: false }
   ];
-  assert.throws(
-    () => assertTemplate3Preconditions(mobileInScope, completedRuns, mkSet()),
-    /No Constrained Mobile run unit/
-  );
+  expect(
+    () => assertTemplate3Preconditions(mobileInScope, completedRuns, mkSet())
+  ).toThrow(/First Mobile RUNUNIT is not Constrained/);
 });
 
 test('Template 3 throws when Mobile run is Constrained but constraintclass missing or invalid', () => {
   const mobileInScope = true;
   const completedRunsA = [
-    { context: 'mobile', outcome: 'Constrained', skipped: false }
+    { context: 'desktop', run_sequence: 1, outcome: 'Observed' },
+    { context: 'mobile', run_sequence: 2, outcome: 'Constrained', mobile_baseline_top_document_loaded: false }
   ];
-  assert.throws(
-    () => assertTemplate3Preconditions(mobileInScope, completedRunsA, mkSet()),
-    /valid constraintclass/
-  );
+  expect(
+    () => assertTemplate3Preconditions(mobileInScope, completedRunsA, mkSet())
+  ).toThrow(/First Mobile RUNUNIT missing constraintclass/);
 
   const completedRunsB = [
-    { context: 'mobile', outcome: 'Constrained', constraintclass: 'NOT_A_REAL_CLASS', skipped: false }
+    { context: 'desktop', run_sequence: 1, outcome: 'Observed' },
+    { context: 'mobile', run_sequence: 2, outcome: 'Constrained', constraintclass: 'NOT_A_REAL_CLASS', mobile_baseline_top_document_loaded: false }
   ];
-  assert.throws(
-    () => assertTemplate3Preconditions(mobileInScope, completedRunsB, mkSet()),
-    /valid constraintclass/
-  );
+  expect(
+    () => assertTemplate3Preconditions(mobileInScope, completedRunsB, mkSet())
+  ).toThrow(/First Mobile RUNUNIT constraintclass not in locked enum/);
 });

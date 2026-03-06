@@ -11,7 +11,6 @@ module.exports = {
   // Do NOT let Jest try to run Playwright Test or Node's test runner suites
   testPathIgnorePatterns: [
     "/node_modules/",
-    "\\.spec\\.js$",
-    "template3_preconditions\\.test\\.js$"
+    "\\.spec\\.js$"
   ],
 };
