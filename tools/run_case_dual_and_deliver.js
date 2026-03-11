@@ -178,8 +178,10 @@ function main() {
   run("powershell.exe", [
     "-NoProfile",
     "-Command",
-    "Compress-Archive -Path (Join-Path '" + deliverDir.replace(/'/g,"''") + "' '*') -DestinationPath '" + zipOut.replace(/'/g,"''") + "' -Force"
-  ]);
+    "Compress-Archive -Path (Join-Path $env:AF_DELIVER_DIR '*') -DestinationPath $env:AF_ZIP_OUT -Force"
+  ], {
+    env: { ...process.env, AF_DELIVER_DIR: deliverDir, AF_ZIP_OUT: zipOut }
+  });
 
   console.log("[OK] deliverable_zip -> " + zipOut);
 }
