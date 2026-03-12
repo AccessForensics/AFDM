@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Appendix A12 \u2014 TransmittalGateRecord Schema (Locked)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "matter_id",
+    "packet_version",
+    "schema_validation_passed",
+    "hash_chain_verified",
+    "manifest_binding_verified",
+    "external_output_review_passed",
+    "operator_id",
+    "gate_timestamp_local",
+    "gate_timestamp_epoch_ms",
+    "packet_validity_status"
+  ],
+  "properties": {
+    "matter_id": {
+      "type": "string"
+    },
+    "packet_version": {
+      "type": "string",
+      "pattern": "^v[1-9][0-9]*$"
+    },
+    "schema_validation_passed": {
+      "type": "boolean",
+      "const": true
+    },
+    "hash_chain_verified": {
+      "type": "boolean",
+      "const": true
+    },
+    "manifest_binding_verified": {
+      "type": "boolean",
+      "const": true
+    },
+    "external_output_review_passed": {
+      "type": "boolean",
+      "const": true
+    },
+    "operator_id": {
+      "type": "string"
+    },
+    "gate_timestamp_local": {
+      "type": "string"
+    },
+    "gate_timestamp_epoch_ms": {
+      "type": "integer"
+    },
+    "packet_validity_status": {
+      "type": "string",
+      "enum": [
+        "valid_transmittable",
+        "invalid_untransmittable"
+      ]
+    }
+  }
+}

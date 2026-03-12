@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Appendix A17 \u2014 CustodialTransferLog Schema (Locked)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "custodial_transfer_log_id",
+    "matter_id",
+    "original_packet_hash",
+    "transferred_to",
+    "transfer_timestamp_local",
+    "transfer_timestamp_epoch_ms",
+    "transfer_authority_basis",
+    "sealed_as_final_record",
+    "operator_id"
+  ],
+  "properties": {
+    "custodial_transfer_log_id": {
+      "type": "string"
+    },
+    "matter_id": {
+      "type": "string"
+    },
+    "original_packet_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "transferred_to": {
+      "type": "string"
+    },
+    "transfer_timestamp_local": {
+      "type": "string"
+    },
+    "transfer_timestamp_epoch_ms": {
+      "type": "integer"
+    },
+    "transfer_authority_basis": {
+      "type": "string"
+    },
+    "sealed_as_final_record": {
+      "type": "boolean",
+      "const": true
+    },
+    "operator_id": {
+      "type": "string"
+    }
+  }
+}

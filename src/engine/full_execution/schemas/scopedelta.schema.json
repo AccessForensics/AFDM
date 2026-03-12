@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Appendix A4 \u2014 ScopeDelta Schema (Locked)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scope_delta_id",
+    "matter_id",
+    "authority_type",
+    "authority_source_ref",
+    "authority_date_local",
+    "authority_date_epoch_ms",
+    "delta_type",
+    "delta_description",
+    "operator_id",
+    "sealed_timestamp_local",
+    "sealed_timestamp_epoch_ms"
+  ],
+  "properties": {
+    "scope_delta_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "matter_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authority_type": {
+      "type": "string",
+      "enum": [
+        "ENGAGEMENT_ADDENDUM",
+        "COUNSEL_EMAIL",
+        "PORTAL_INSTRUCTION"
+      ]
+    },
+    "authority_source_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authority_date_local": {
+      "type": "string",
+      "minLength": 19
+    },
+    "authority_date_epoch_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "delta_type": {
+      "type": "string",
+      "enum": [
+        "ADDITIVE_URL",
+        "ADDITIVE_STEP",
+        "ADDITIVE_ALLEGATION",
+        "AUTHORIZED_LANE"
+      ]
+    },
+    "delta_description": {
+      "type": "string",
+      "minLength": 10
+    },
+    "operator_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sealed_timestamp_local": {
+      "type": "string",
+      "minLength": 19
+    },
+    "sealed_timestamp_epoch_ms": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

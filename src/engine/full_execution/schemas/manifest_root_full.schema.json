@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Appendix A1 \u2014 ManifestRoot Schema (Locked)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "matter_id",
+    "packet_version",
+    "packet_generated_local",
+    "packet_generated_epoch_ms",
+    "operator_id",
+    "controlled_template_version",
+    "controlled_template_hash",
+    "packet_validity_status",
+    "records"
+  ],
+  "properties": {
+    "matter_id": {
+      "type": "string"
+    },
+    "packet_version": {
+      "type": "string",
+      "pattern": "^v[1-9][0-9]*$"
+    },
+    "packet_generated_local": {
+      "type": "string"
+    },
+    "packet_generated_epoch_ms": {
+      "type": "integer"
+    },
+    "operator_id": {
+      "type": "string"
+    },
+    "controlled_template_version": {
+      "type": "string"
+    },
+    "controlled_template_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "packet_validity_status": {
+      "type": "string",
+      "enum": [
+        "valid_transmittable",
+        "invalid_untransmittable"
+      ]
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "filepath",
+          "sha256",
+          "bytes"
+        ],
+        "properties": {
+          "filepath": {
+            "type": "string",
+            "pattern": "^(01_Report|02_Exhibits|03_Verification)/.*$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}
