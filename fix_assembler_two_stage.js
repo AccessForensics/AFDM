@@ -1,4 +1,6 @@
-const fs = require("fs");
+const fs = require('fs');
+
+const content = `const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { validateManifestRoot } = require("../validators/schema_validator");
@@ -62,7 +64,7 @@ class PacketAssembler {
             fs.writeFileSync(filepath, content);
         }
 
-        const relativePath = path.relative(this.baseDir, filepath).replace(/\\/g, '/');
+        const relativePath = path.relative(this.baseDir, filepath).replace(/\\\\/g, '/');
         const fileInfo = this._hashFile(filepath);
 
         this.records.push({
@@ -85,13 +87,13 @@ class PacketAssembler {
 
         // Generate the review viewer
         const viewerPath = path.join(this.baseDir, "REVIEW_viewer.html");
-        let html = "<!DOCTYPE html>\n<html>\n<head>\n<title>REVIEW ONLY - Matter " + this.matterId + "</title>\n";
-        html += "<style>body{font-family:sans-serif;padding:20px}.warning{background:#ffebee;border-left:4px solid #c00;padding:15px}.record{background:#f4f4f4;padding:10px;margin-bottom:10px}</style>\n</head>\n<body>\n";
-        html += "<div class=\"warning\"><h2>REVIEW ONLY / NOT FINAL / NON-CANONICAL</h2>\n";
-        html += "<p>This is a pre-delivery review artifact. It is NOT sealed. Do not send this to attorney delivery.</p></div>\n";
-        html += "<h2>Review Artifacts</h2>\n";
+        let html = "<!DOCTYPE html>\\n<html>\\n<head>\\n<title>REVIEW ONLY - Matter " + this.matterId + "</title>\\n";
+        html += "<style>body{font-family:sans-serif;padding:20px}.warning{background:#ffebee;border-left:4px solid #c00;padding:15px}.record{background:#f4f4f4;padding:10px;margin-bottom:10px}</style>\\n</head>\\n<body>\\n";
+        html += "<div class=\\"warning\\"><h2>REVIEW ONLY / NOT FINAL / NON-CANONICAL</h2>\\n";
+        html += "<p>This is a pre-delivery review artifact. It is NOT sealed. Do not send this to attorney delivery.</p></div>\\n";
+        html += "<h2>Review Artifacts</h2>\\n";
         for (const record of this.records) {
-            html += "<div class=\"record\"><a href=\"./" + record.filepath + "\" target=\"_blank\">" + record.filepath + "</a><br>Hash: <code>" + record.sha256 + "</code></div>\n";
+            html += "<div class=\\"record\\"><a href=\\"./" + record.filepath + "\\" target=\\"_blank\\">" + record.filepath + "</a><br>Hash: <code>" + record.sha256 + "</code></div>\\n";
         }
         html += "</body></html>";
         fs.writeFileSync(viewerPath, html, "utf8");
@@ -116,12 +118,12 @@ class PacketAssembler {
         // Anti-tamper lock: Verify every file in the snapshot hasn't changed since review
         for (const record of stagedRecords) {
             const filepath = path.join(reviewStageDir, record.filepath);
-            if (!fs.existsSync(filepath)) throw new Error(`Tamper detected: Missing file ${record.filepath}`);
+            if (!fs.existsSync(filepath)) throw new Error(\`Tamper detected: Missing file \${record.filepath}\`);
             const fileBuffer = fs.readFileSync(filepath);
             const hashSum = crypto.createHash("sha256");
             hashSum.update(fileBuffer);
             if (hashSum.digest("hex") !== record.sha256) {
-                throw new Error(`Tamper detected: File ${record.filepath} was modified after review staging.`);
+                throw new Error(\`Tamper detected: File \${record.filepath} was modified after review staging.\`);
             }
         }
 
@@ -199,3 +201,5 @@ class PacketAssembler {
     }
 }
 module.exports = PacketAssembler;
+`;
+fs.writeFileSync("src/engine/full_execution/lib/packet_assembly.js", content);

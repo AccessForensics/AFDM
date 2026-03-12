@@ -1,4 +1,6 @@
-#!/usr/bin/env node
+const fs = require('fs');
+
+const content = `#!/usr/bin/env node
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
@@ -27,12 +29,12 @@ if (!/^[a-f0-9]{64}$/i.test(templateHash) || templateHash === "00000000000000000
     process.exit(1);
 }
 
-const reviewStageDir = path.join(process.cwd(), "tmp/full_exec_out", `${matterId}_review_stage`);
-const finalDeliveryDir = path.join(process.cwd(), "tmp/full_exec_out", `${matterId}_delivery_packet`);
+const reviewStageDir = path.join(process.cwd(), "tmp/full_exec_out", \`\${matterId}_review_stage\`);
+const finalDeliveryDir = path.join(process.cwd(), "tmp/full_exec_out", \`\${matterId}_delivery_packet\`);
 
 try {
     if (isStage) {
-        console.log(`[FullExec] Stage 1: Building PRE-DELIVERY REVIEW ARTIFACT for ${matterId}`);
+        console.log(\`[FullExec] Stage 1: Building PRE-DELIVERY REVIEW ARTIFACT for \${matterId}\`);
         const envelope = new RuntimeEnvelope(matterId, operatorId);
         envelope.assignOperator(true);
 
@@ -44,15 +46,15 @@ try {
 
         // Stage the review (Generates snapshot and REVIEW_viewer.html but NO seal)
         assembler.stageForReview();
-        console.log(`[FullExec] Review staging complete at: ${reviewStageDir}`);
-        console.log(`[FullExec] Open ${path.join(reviewStageDir, "REVIEW_viewer.html")} to verify contents. Packet is NOT sealed.`);
+        console.log(\`[FullExec] Review staging complete at: \${reviewStageDir}\`);
+        console.log(\`[FullExec] Open \${path.join(reviewStageDir, "REVIEW_viewer.html")} to verify contents. Packet is NOT sealed.\`);
     } else if (isSeal) {
-        console.log(`[FullExec] Stage 2: Ingesting review staging and building FINAL SEALED PACKET for ${matterId}`);
+        console.log(\`[FullExec] Stage 2: Ingesting review staging and building FINAL SEALED PACKET for \${matterId}\`);
 
         const sealResult = PacketAssembler.sealFromReview(reviewStageDir, finalDeliveryDir, operatorId, templateVersion, templateHash);
-        console.log(`[FullExec] Final seal applied successfully.`);
-        console.log(`[FullExec] Canonical Packet Location: ${finalDeliveryDir}`);
-        console.log(`[FullExec] Verified Seal Hash: ${sealResult.sealHash}`);
+        console.log(\`[FullExec] Final seal applied successfully.\`);
+        console.log(\`[FullExec] Canonical Packet Location: \${finalDeliveryDir}\`);
+        console.log(\`[FullExec] Verified Seal Hash: \${sealResult.sealHash}\`);
     }
 
 } catch (err) {
@@ -60,3 +62,5 @@ try {
     console.error(err.message);
     process.exit(1);
 }
+`;
+fs.writeFileSync("src/engine/full_execution/run.js", content);

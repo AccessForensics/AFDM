@@ -183,64 +183,52 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
         expect(sealOutput.sealHash).toMatch(/^[a-f0-9]{64}$/);
     });
 
-    test("Layer 1/2/3: Viewer Artifact is explicitly non-canonical and outside the boundary", () => {
-        const { generateViewer } = require("../../src/engine/full_execution/viewer/generate_viewer");
+    test("Layer 1/2/3: PacketAssembler workflow dictates staging review before sealing", () => {
         const tmpDir = path.join(__dirname, "../../tmp/full_exec_out");
-        const packetDir = path.join(tmpDir, "M-101_viewer_packet");
-        const assembler = new PacketAssembler(packetDir, "M-101", "OP-999");
+        const stageDir = path.join(tmpDir, "M-STAGE-1_review_stage");
+        const finalDir = path.join(tmpDir, "M-STAGE-1_delivery_packet");
+
+        // Phase 1: Stage
+        const assembler = new PacketAssembler(stageDir, "M-STAGE-1", "OP-999");
         assembler.init();
+        assembler.writeRecord("01_Report", "data.txt", "Some captured data", "txt");
+        assembler.stageForReview();
 
-        const testFilePath = assembler.writeRecord("01_Report", "evidence.txt", "Viewer test", "txt");
-        assembler.seal("valid_transmittable", "1.0.0", dummyHash);
-        assembler.generateVerificationOutputs();
+        // Assert review artifact exists but is not sealed
+        expect(fs.existsSync(path.join(stageDir, "REVIEW_viewer.html"))).toBe(true);
+        expect(fs.existsSync(path.join(stageDir, "state_snapshot.json"))).toBe(true);
+        expect(fs.existsSync(path.join(stageDir, "03_Verification", "packet_seal.txt"))).toBe(false);
 
-        // Generate the viewer in the parent directory, strictly outside the packet folder
-        const viewerPath = generateViewer(packetDir, tmpDir);
+        // Assert view HTML strictly marks itself
+        const html = fs.readFileSync(path.join(stageDir, "REVIEW_viewer.html"), "utf8");
+        expect(html).toContain("REVIEW ONLY / NOT FINAL / NON-CANONICAL");
 
-        // Assertions for structural boundary
-        expect(viewerPath.includes("M-101_viewer_packet")).toBe(false);
-        expect(fs.existsSync(viewerPath)).toBe(true);
+        // Phase 2: Seal
+        const sealResult = PacketAssembler.sealFromReview(stageDir, finalDir, "OP-999", "1.0", dummyHash);
 
-        const html = fs.readFileSync(viewerPath, "utf8");
-        expect(html).toContain("NON-CANONICAL VIEWER");
-        expect(html).toContain("OUTSIDE the canonical hash boundary");
-        expect(html).toContain("01_Report/evidence.txt");
+        // Assert final packet is strictly sealed and clean
+        expect(fs.existsSync(path.join(finalDir, "03_Verification", "packet_seal.txt"))).toBe(true);
+        expect(fs.existsSync(path.join(finalDir, "01_Report", "data.txt"))).toBe(true);
+        expect(fs.existsSync(path.join(finalDir, "REVIEW_viewer.html"))).toBe(false);
+        expect(fs.existsSync(path.join(finalDir, "state_snapshot.json"))).toBe(false);
+        expect(sealResult.sealHash).toMatch(/^[a-f0-9]{64}$/);
     });
 
-    test("Layer 1/2/3: Reading files from the sealed packet does not mutate hashes", () => {
-        const packetDir = path.join(__dirname, "../../tmp/full_exec_out", "M-101_read_test_packet");
-        const assembler = new PacketAssembler(packetDir, "M-101", "OP-999");
-        assembler.init();
-
-        const testFilePath = assembler.writeRecord("01_Report", "read_target.txt", "Hash me", "txt");
-
-        const initialHash = crypto.createHash("sha256").update(fs.readFileSync(testFilePath)).digest("hex");
-
-        // Simulate reading the file multiple times exactly as a viewer or human would
-        for(let i=0; i<5; i++) {
-            fs.readFileSync(testFilePath, "utf8");
-        }
-
-        const postReadHash = crypto.createHash("sha256").update(fs.readFileSync(testFilePath)).digest("hex");
-
-        expect(initialHash).toBe(postReadHash);
-    });
-
-    test("Layer 1/2/3: Viewer Generator explicitly rejects writing inside the canonical boundary", () => {
-        const { generateViewer } = require("../../src/engine/full_execution/viewer/generate_viewer");
+    test("Layer 1/2/3: PacketAssembler rejects sealing if staging files were tampered with", () => {
         const tmpDir = path.join(__dirname, "../../tmp/full_exec_out");
-        const packetDir = path.join(tmpDir, "M-101_boundary_test_packet");
-        const assembler = new PacketAssembler(packetDir, "M-101", "OP-999");
-        assembler.init();
-        assembler.writeRecord("01_Report", "evidence.txt", "Viewer test", "txt");
-        assembler.seal("valid_transmittable", "1.0.0", dummyHash);
-        assembler.generateVerificationOutputs();
+        const stageDir = path.join(tmpDir, "M-TAMPER-1_review_stage");
+        const finalDir = path.join(tmpDir, "M-TAMPER-1_delivery_packet");
 
-        // Attempting to output the viewer INSIDE the canonical Exhibits directory should fail instantly
-        const internalOutputDir = path.join(packetDir, "02_Exhibits");
+        const assembler = new PacketAssembler(stageDir, "M-TAMPER-1", "OP-999");
+        assembler.init();
+        assembler.writeRecord("01_Report", "data.txt", "Some original data", "txt");
+        assembler.stageForReview();
+
+        // TAMPER THE FILE AFTER REVIEW BUT BEFORE SEAL
+        fs.writeFileSync(path.join(stageDir, "01_Report", "data.txt"), "Hacked data", "utf8");
 
         expect(() => {
-            generateViewer(packetDir, internalOutputDir, "OP-ATTORNEY");
-        }).toThrow("Boundary violation: Viewer output directory cannot be inside the sealed canonical packet.");
+            PacketAssembler.sealFromReview(stageDir, finalDir, "OP-999", "1.0", dummyHash);
+        }).toThrow("Tamper detected: File 01_Report/data.txt was modified after review staging.");
     });
 });
