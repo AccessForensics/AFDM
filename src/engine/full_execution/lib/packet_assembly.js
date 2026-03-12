@@ -121,11 +121,6 @@ class PacketAssembler {
      * the root package.json. This mechanism ensures deterministic sealing but
      * does not yet represent the final doctrine-defined template authority.
      */
-    /**
-     * This system currently derives an interim bounded proxy authority by hashing
-     * the root package.json. This mechanism ensures deterministic sealing but
-     * does not yet represent the final doctrine-defined template authority.
-     */
     static _deriveInterimTemplateAuthority() {
         const templatePath = path.resolve(__dirname, "../../../..");
         try {
@@ -140,13 +135,6 @@ class PacketAssembler {
         }
     }
 
-    /**
-     * The seal step performs a recursive live-tree walk.
-     *
-     * • Empty alien directories are detected directly
-     * • Non-empty alien directories are detected via the files they contain
-     * • Any mismatch against the staged snapshot triggers a tamper error
-     */
     /**
      * The seal step performs a recursive live-tree walk.
      *
