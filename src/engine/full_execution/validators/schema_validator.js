@@ -26,21 +26,15 @@ const validateTransmittalGate = ajv.compile(transmittalGateRecordSchema);
 const validateCustodialTransfer = ajv.compile(custodialTransferLogSchema);
 const validateManifestRoot = ajv.compile(manifestRootSchema);
 
-// Existing shared schemas (if available and compliant)
-let validateCaptureUnit = null;
-let validateInteractionPlan = null;
-try {
-    const sharedSchemasDir = path.join(__dirname, "../../schemas");
-    const captureUnitSchema = JSON.parse(fs.readFileSync(path.join(sharedSchemasDir, "capture_unit.schema.json"), "utf-8"));
-    const interactionPlanSchema = JSON.parse(fs.readFileSync(path.join(sharedSchemasDir, "interaction_plan.schema.json"), "utf-8"));
-    validateCaptureUnit = ajv.compile(captureUnitSchema);
-    validateInteractionPlan = ajv.compile(interactionPlanSchema);
-} catch (err) {
-    console.warn("Could not load shared CaptureUnit/InteractionPlan schemas.", err.message);
-}
+// Existing shared schemas MUST fail-closed if missing
+const sharedSchemasDir = path.join(__dirname, "../../schemas");
+const captureUnitSchema = JSON.parse(fs.readFileSync(path.join(sharedSchemasDir, "capture_unit.schema.json"), "utf-8"));
+const interactionPlanSchema = JSON.parse(fs.readFileSync(path.join(sharedSchemasDir, "interaction_plan.schema.json"), "utf-8"));
+
+const validateCaptureUnit = ajv.compile(captureUnitSchema);
+const validateInteractionPlan = ajv.compile(interactionPlanSchema);
 
 function runValidation(validateFn, data, schemaName) {
-    if (!validateFn) throw new Error(`Validator for ${schemaName} is not compiled.`);
     const valid = validateFn(data);
     if (!valid) {
         return {

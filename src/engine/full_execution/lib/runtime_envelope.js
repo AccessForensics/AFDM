@@ -1,8 +1,3 @@
-/**
- * Logic governing temporal logging, chain of custody, versioning,
- * retry and authorized lane handling (Sections 18 & 19).
- */
-
 const { validateScopeDelta, validateOperatorRecord } = require("../validators/schema_validator");
 const crypto = require("crypto");
 
@@ -66,6 +61,17 @@ class RuntimeEnvelope {
     }
 
     handleConstraint(label, constraintClass) {
+        const allowedLabels = [
+            "Observed as asserted",
+            "Not observed as asserted",
+            "Constrained",
+            "Insufficiently specified for bounded execution"
+        ];
+
+        if (!allowedLabels.includes(label)) {
+            throw new Error(`Invalid outcome label: ${label}`);
+        }
+
         if (label === "Constrained") {
             const allowed = ["BOTMITIGATION", "AUTHWALL", "GEOBLOCK", "HARDCRASH", "NAVIMPEDIMENT"];
             if (!allowed.includes(constraintClass)) {

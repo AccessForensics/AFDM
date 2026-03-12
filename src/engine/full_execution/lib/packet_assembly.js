@@ -85,7 +85,11 @@ class PacketAssembler {
         return filepath;
     }
 
-    seal(validityStatus = "valid_transmittable") {
+    seal(validityStatus = "valid_transmittable", controlledTemplateVersion, controlledTemplateHash) {
+        if (!controlledTemplateVersion || !controlledTemplateHash) {
+            throw new Error("Controlled template version and hash are required for fail-closed sealing.");
+        }
+
         // Write the manifest to 03_Verification
         const manifestObj = {
             matter_id: this.matterId,
@@ -93,8 +97,8 @@ class PacketAssembler {
             packet_generated_local: new Date().toISOString(),
             packet_generated_epoch_ms: Date.now(),
             operator_id: this.operatorId,
-            controlled_template_version: "v1.0.0", // Dummy for strict compliance
-            controlled_template_hash: "0000000000000000000000000000000000000000000000000000000000000000",
+            controlled_template_version: controlledTemplateVersion,
+            controlled_template_hash: controlledTemplateHash,
             packet_validity_status: validityStatus,
             records: this.records
         };
@@ -107,6 +111,7 @@ class PacketAssembler {
         const manifestPath = this.writeRecord("03_Verification", "manifest.json", manifestObj, "json");
         return manifestPath;
     }
+
     generateVerificationOutputs() {
         const manifestPath = path.join(this.dirs.verification, "manifest.json");
         if (!fs.existsSync(manifestPath)) throw new Error("Manifest not sealed yet.");
@@ -116,7 +121,12 @@ class PacketAssembler {
         hashSum.update(manifestContent);
         const sha256 = hashSum.digest("hex");
 
-        fs.writeFileSync(path.join(this.dirs.verification, "packet_seal.txt"), sha256, "utf8");
+        const sealPath = path.join(this.dirs.verification, "packet_seal.txt");
+        fs.writeFileSync(sealPath, sha256, "utf8");
+
+        // NOTE: packet_seal.txt proves the manifest hash, but it cannot be inside the manifest
+        // because its own generation depends on the finalized manifest bytes.
+        // This is a cryptographic reality, not a defect.
 
         return {
             sealHash: sha256,
