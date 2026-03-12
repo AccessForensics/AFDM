@@ -11,21 +11,16 @@ const isSeal = args.includes("--seal-approved");
 const positional = args.filter(a => !a.startsWith("--"));
 
 if (!isStage && !isSeal) {
-    console.error("Usage: node src/engine/full_execution/run.js [--stage-review | --seal-approved] <matter_id> <operator_id> <template_version> <template_hash>");
+    console.error("Usage: node src/engine/full_execution/run.js [--stage-review | --seal-approved] <matter_id> <operator_id>");
     process.exit(1);
 }
 
-if (positional.length < 4) {
-    console.error("Missing required positional arguments. <matter_id> <operator_id> <template_version> <template_hash>");
+if (positional.length < 2) {
+    console.error("Missing required positional arguments. <matter_id> <operator_id>");
     process.exit(1);
 }
 
-const [matterId, operatorId, templateVersion, templateHash] = positional;
-
-if (!/^[a-f0-9]{64}$/i.test(templateHash) || templateHash === "0000000000000000000000000000000000000000000000000000000000000000") {
-    console.error("[FullExec] Invalid controlled template hash.");
-    process.exit(1);
-}
+const [matterId, operatorId] = positional;
 
 const reviewStageDir = path.join(process.cwd(), "tmp/full_exec_out", `${matterId}_review_stage`);
 const finalDeliveryDir = path.join(process.cwd(), "tmp/full_exec_out", `${matterId}_delivery_packet`);
@@ -39,10 +34,8 @@ try {
         const assembler = new PacketAssembler(reviewStageDir, matterId, operatorId);
         assembler.init();
 
-        // Simulated execution run generating review data
         assembler.writeRecord("01_Report", "dummy_report.txt", "Simulated report generated during full execution.", "txt");
 
-        // Stage the review (Generates snapshot and REVIEW_viewer.html but NO seal)
         assembler.stageForReview();
         console.log(`[FullExec] Review staging complete at: ${reviewStageDir}`);
         console.log(`[FullExec] Open ${path.join(reviewStageDir, "REVIEW_viewer.html")} to verify contents. Packet is NOT sealed.`);

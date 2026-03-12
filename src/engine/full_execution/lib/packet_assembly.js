@@ -66,24 +66,23 @@ class PacketAssembler {
         const fileInfo = this._hashFile(filepath);
 
         this.records.push({
-            filepath: relativePath,
+            relative_filepath: relativePath,
             sha256: fileInfo.sha256,
-            bytes: fileInfo.bytes
+            bytes: fileInfo.bytes,
+            expected_destination_path: relativePath
         });
 
         return filepath;
     }
 
-    /**
-     * Stage 1: Pre-delivery review artifact.
-     * Generates a viewable HTML index and a state_snapshot but explicitly DOES NOT seal the packet.
-     */
     stageForReview() {
-        // Create an internal snapshot to guarantee the review stage matches the final seal stage
+        const snapshotObj = {
+            matter_id: this.matterId,
+            records: this.records
+        };
         const snapshotPath = path.join(this.baseDir, "state_snapshot.json");
-        fs.writeFileSync(snapshotPath, JSON.stringify(this.records, null, 2), "utf8");
+        fs.writeFileSync(snapshotPath, JSON.stringify(snapshotObj, null, 2), "utf8");
 
-        // Generate the review viewer
         const viewerPath = path.join(this.baseDir, "REVIEW_viewer.html");
         let html = "<!DOCTYPE html>\n<html>\n<head>\n<title>REVIEW ONLY - Matter " + this.matterId + "</title>\n";
         html += "<style>body{font-family:sans-serif;padding:20px}.warning{background:#ffebee;border-left:4px solid #c00;padding:15px}.record{background:#f4f4f4;padding:10px;margin-bottom:10px}</style>\n</head>\n<body>\n";
@@ -91,7 +90,7 @@ class PacketAssembler {
         html += "<p>This is a pre-delivery review artifact. It is NOT sealed. Do not send this to attorney delivery.</p></div>\n";
         html += "<h2>Review Artifacts</h2>\n";
         for (const record of this.records) {
-            html += "<div class=\"record\"><a href=\"./" + record.filepath + "\" target=\"_blank\">" + record.filepath + "</a><br>Hash: <code>" + record.sha256 + "</code></div>\n";
+            html += "<div class=\"record\"><a href=\"./" + record.relative_filepath + "\" target=\"_blank\">" + record.relative_filepath + "</a><br>Hash: <code>" + record.sha256 + "</code></div>\n";
         }
         html += "</body></html>";
         fs.writeFileSync(viewerPath, html, "utf8");
@@ -99,10 +98,25 @@ class PacketAssembler {
         return { snapshotPath, viewerPath };
     }
 
-    /**
-     * Stage 2: Final seal.
-     * Ingests a previously staged review snapshot, verifies nothing was tampered with, and applies the final canonical manifest and hash seal.
-     */
+    static _walkSync(dir, filelist = [], rootDir = dir) {
+        const files = fs.readdirSync(dir);
+        if (files.length === 0 && dir !== rootDir) {
+            filelist.push(path.relative(rootDir, dir).replace(/\\/g, '/') + '/');
+            return filelist;
+        }
+        for (const file of files) {
+            const filepath = path.join(dir, file);
+            const stat = fs.statSync(filepath);
+            if (stat.isDirectory()) {
+                filelist.push(path.relative(rootDir, filepath).replace(/\\/g, '/') + '/');
+                filelist = PacketAssembler._walkSync(filepath, filelist, rootDir);
+            } else {
+                filelist.push(path.relative(rootDir, filepath).replace(/\\/g, '/'));
+            }
+        }
+        return filelist;
+    }
+
     static _deriveInterimTemplateAuthority() {
         const templatePath = path.resolve(__dirname, "../../../..");
         try {
@@ -118,40 +132,59 @@ class PacketAssembler {
     }
 
     static sealFromReview(reviewStageDir, targetDeliveryDir, operatorId, validityStatus = "valid_transmittable") {
-        // Interim bounded proxy authority - extracted from library context, not user args
         const { templateVersion, templateHash } = PacketAssembler._deriveInterimTemplateAuthority();
 
         const snapshotPath = path.join(reviewStageDir, "state_snapshot.json");
         if (!fs.existsSync(snapshotPath)) throw new Error("Missing state_snapshot.json. Cannot seal a packet that was not staged for review.");
 
-        const stagedRecords = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
+        const stagedState = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
+        const stagedRecords = stagedState.records;
 
-        // Anti-tamper lock: Verify every file in the snapshot hasn't changed since review
+        const liveFiles = PacketAssembler._walkSync(reviewStageDir);
+        const cleanLiveFiles = liveFiles.filter(f => {
+            if (f === "state_snapshot.json" || f === "REVIEW_viewer.html") return false;
+            if (["01_Report/", "02_Exhibits/", "03_Verification/", "02_Exhibits/desktop_baseline/", "02_Exhibits/mobile_baseline/", "02_Exhibits/authorized_reflow/"].includes(f)) return false;
+            return true;
+        });
+
+        const snapshotPaths = new Set(stagedRecords.map(r => r.relative_filepath));
+        for (const liveFile of cleanLiveFiles) {
+            if (!snapshotPaths.has(liveFile)) {
+                throw new Error(`Tamper detected: Alien file or directory introduced after review: ${liveFile}`);
+            }
+        }
+
+        const cleanLiveSet = new Set(cleanLiveFiles);
         for (const record of stagedRecords) {
-            const filepath = path.join(reviewStageDir, record.filepath);
-            if (!fs.existsSync(filepath)) throw new Error(`Tamper detected: Missing file ${record.filepath}`);
+            if (!cleanLiveSet.has(record.relative_filepath)) {
+                throw new Error(`Tamper detected: Missing file ${record.relative_filepath}`);
+            }
+            const filepath = path.join(reviewStageDir, record.relative_filepath);
             const fileBuffer = fs.readFileSync(filepath);
             const hashSum = crypto.createHash("sha256");
             hashSum.update(fileBuffer);
             if (hashSum.digest("hex") !== record.sha256) {
-                throw new Error(`Tamper detected: File ${record.filepath} was modified after review staging.`);
+                throw new Error(`Tamper detected: File ${record.relative_filepath} was modified after review staging.`);
             }
         }
 
-        // Copy clean files to delivery packet (stripping out the non-canonical review markers)
-        const deliveryAssembler = new PacketAssembler(targetDeliveryDir, stagedRecords.matter_id || "unknown", operatorId);
+        const deliveryAssembler = new PacketAssembler(targetDeliveryDir, stagedState.matter_id || "unknown", operatorId);
         deliveryAssembler.init();
 
         for (const record of stagedRecords) {
-            const srcPath = path.join(reviewStageDir, record.filepath);
-            const destPath = path.join(targetDeliveryDir, record.filepath);
+            const srcPath = path.join(reviewStageDir, record.relative_filepath);
+            const destPath = path.join(targetDeliveryDir, record.expected_destination_path);
             const destDir = path.dirname(destPath);
             if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
             fs.copyFileSync(srcPath, destPath);
-            deliveryAssembler.records.push({ ...record });
+
+            deliveryAssembler.records.push({
+                filepath: record.expected_destination_path,
+                sha256: record.sha256,
+                bytes: record.bytes
+            });
         }
 
-        // Now seal the delivery packet
         const manifestObj = {
             matter_id: deliveryAssembler.matterId,
             packet_version: deliveryAssembler.version,
@@ -181,9 +214,15 @@ class PacketAssembler {
         };
     }
 
-    // Kept for backward compat with test flows that just need a quick seal during mock generation without staging
     seal(validityStatus = "valid_transmittable") {
         const { templateVersion: controlledTemplateVersion, templateHash: controlledTemplateHash } = PacketAssembler._deriveInterimTemplateAuthority();
+
+        const formattedRecords = this.records.map(r => ({
+            filepath: r.relative_filepath,
+            sha256: r.sha256,
+            bytes: r.bytes
+        }));
+
         const manifestObj = {
             matter_id: this.matterId,
             packet_version: this.version,
@@ -193,11 +232,23 @@ class PacketAssembler {
             controlled_template_version: controlledTemplateVersion,
             controlled_template_hash: controlledTemplateHash,
             packet_validity_status: validityStatus,
-            records: this.records
+            records: formattedRecords
         };
+
         const result = validateManifestRoot(manifestObj);
-        if (!result.valid) throw new Error("Manifest failed schema validation: " + JSON.stringify(result.errors));
-        this.writeRecord("03_Verification", "manifest.json", manifestObj, "json");
+        if (!result.valid) {
+            throw new Error("Manifest failed schema validation: " + JSON.stringify(result.errors));
+        }
+
+        const targetDir = this.dirs.verification;
+        const filepath = path.join(targetDir, "manifest.json");
+        fs.writeFileSync(filepath, JSON.stringify(manifestObj, null, 2), "utf8");
+        this.records.push({
+             relative_filepath: "03_Verification/manifest.json",
+             expected_destination_path: "03_Verification/manifest.json",
+             sha256: this._hashFile(filepath).sha256,
+             bytes: this._hashFile(filepath).bytes
+        });
     }
 
     generateVerificationOutputs() {
