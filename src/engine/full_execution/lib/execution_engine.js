@@ -19,6 +19,13 @@ class FullExecutionEngine {
             // Generate real screenshot buffer bytes
             const desktopScreenshotBuffer = await desktopPage.screenshot({ fullPage: true });
 
+            /*
+             * BOUNDARY STATEMENT:
+             * Current findings path is shallow execution-derived metadata.
+             * Current findings path is not a full accessibility scanner.
+             * It proves browser-executed DOM analysis occurred.
+             * It does not satisfy final diagnostic findings requirements.
+             */
             // Execute real in-browser DOM analysis for findings payload
             const desktopFindings = await desktopPage.evaluate(() => {
                 return {
@@ -54,11 +61,12 @@ class FullExecutionEngine {
             const mobileEnd = Date.now();
 
             // Compile the aggregated execution metadata
+            const executedContexts = ["desktop_baseline", "mobile_baseline"];
             const summaryData = {
                 matter_id: matterId,
                 target_url: targetUrl,
-                contexts_executed: ["desktop_baseline", "mobile_baseline"],
-                pages_scanned: 2,
+                contexts_executed: executedContexts,
+                pages_scanned: executedContexts.length,
                 total_time_ms: (desktopEnd - desktopStart) + (mobileEnd - mobileStart)
             };
 
