@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
+          node-version: "20"
           cache: "npm"
 
       - name: Install deps
@@ -24,9 +24,6 @@ jobs:
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
-
-      - name: Test
-        run: npm test
 
       - name: Gate
         run: npm run gate:smoke

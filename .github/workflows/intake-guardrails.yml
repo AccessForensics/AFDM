@@ -4,8 +4,8 @@ on:
   pull_request:
   push:
     branches:
-      - main
       - intake
+      - main
 
 jobs:
   guardrails:
@@ -14,9 +14,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
+          node-version: "20"
       - name: Install deps
         run: npm ci
       - name: Guardrails check
-        run: node tools/guardrails_check.js
+        run: node tools/ci/guardrails_check.js

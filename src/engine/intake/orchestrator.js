@@ -19,6 +19,7 @@ const {
 const { validateNote }                           = require('./notegate.js');
 const { normalizeToRunUnits, validateAtomicity } = require('./complaintnormalizer.js');
 const { computeDetermination }                   = require('./determination.js');
+const { resolveTemplate }                        = require('./template_resolver.js');
 const contextFactory                             = require('./contextfactory.js');
 const { detectAnchor }                           = require('./anchordetector.js');
 
@@ -208,6 +209,14 @@ const ctx = await browser.newContext(ctxOpts);
     determinationnote: determination.note,
     generatedutc:      new Date().toISOString()
   };
+
+  // Resolve the markdown template text
+  const renderedDeterminationText = resolveTemplate(determination.category, determination.constraintClass);
+  fs.writeFileSync(
+    path.join(outputDir, 'DETERMINATION.txt'),
+    renderedDeterminationText,
+    'utf8'
+  );
   
   // Template 3 linkage enforcement (locked)
   // If external determination is Desktop eligible but Mobile baseline constrained, require a constrained Mobile run with valid constraintclass.

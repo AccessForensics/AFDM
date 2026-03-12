@@ -1,4 +1,4 @@
-﻿ACCESS FORENSICS
+ACCESS FORENSICS
 INTAKE DETERMINATION
 MATTER ID: [AF-YYYY-NNNN]
 
@@ -8,8 +8,8 @@ Based on Access Forensics intake assessment of the complaint or demand materials
 
 If baseline access is intercepted by an automated challenge layer, access control, geofencing, or other technical barrier, Access Forensics does not attempt to defeat or bypass that barrier under allegation-scoped posture. The constraint is treated as a material feasibility event for reproducibility and is documented in the intake record.
 
-CONSTRAINT CLASS: [BOTMITIGATION / AUTHWALL / GEOBLOCK / HARDCRASH / NAVIMPEDIMENT]
-PLAIN-LANGUAGE BASIS: [One-line description of what was detected in the baseline lane]
+CONSTRAINT CLASS: {{CONSTRAINT_CLASS}}
+PLAIN-LANGUAGE BASIS: {{CONSTRAINT_BASIS}}
 
 A constraint artifact package documenting this feasibility event, including timestamped run artifacts, response header records, and a challenge fingerprint (SHA-256), is available as a case record.
 
