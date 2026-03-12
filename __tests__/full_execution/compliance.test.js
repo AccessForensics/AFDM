@@ -92,13 +92,19 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
         expect(valid.constraint_class).toBe("BOTMITIGATION");
     });
 
-    test("Layer 1/2/3: PacketAssembler seal fails without templates", () => {
+    test("Layer 1/2/3: PacketAssembler derives interim template authority strictly from root package.json", () => {
         const tmpDir = path.join(__dirname, "../../tmp/full_exec_out", "test_packet_templates");
         const assembler = new PacketAssembler(tmpDir, "M-101", "OP-999");
         assembler.init();
+        // Since it reads from the real repo root, it should succeed
         expect(() => {
             assembler.seal("valid_transmittable");
-        }).toThrow("Controlled template version and hash are required");
+        }).not.toThrow();
+
+        // We can also prove the generated manifest contains real non-dummy hashes
+        const manifest = JSON.parse(fs.readFileSync(path.join(tmpDir, "03_Verification", "manifest.json"), "utf8"));
+        expect(manifest.controlled_template_hash).not.toBe("0000000000000000000000000000000000000000000000000000000000000000");
+        expect(manifest.controlled_template_hash).toMatch(/^[a-f0-9]{64}$/);
     });
 
     test("Layer 1/2/3: PacketAssembler rejects invalid schema records during seal", () => {
@@ -107,7 +113,7 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
         assembler.init();
 
         expect(() => {
-            assembler.seal("junk_status", "1.0", dummyHash);
+            assembler.seal("junk_status");
         }).toThrow("Manifest failed schema validation");
     });
 
@@ -204,7 +210,7 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
         expect(html).toContain("REVIEW ONLY / NOT FINAL / NON-CANONICAL");
 
         // Phase 2: Seal
-        const sealResult = PacketAssembler.sealFromReview(stageDir, finalDir, "OP-999", "1.0", dummyHash);
+        const sealResult = PacketAssembler.sealFromReview(stageDir, finalDir, "OP-999");
 
         // Assert final packet is strictly sealed and clean
         expect(fs.existsSync(path.join(finalDir, "03_Verification", "packet_seal.txt"))).toBe(true);
@@ -228,7 +234,7 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
         fs.writeFileSync(path.join(stageDir, "01_Report", "data.txt"), "Hacked data", "utf8");
 
         expect(() => {
-            PacketAssembler.sealFromReview(stageDir, finalDir, "OP-999", "1.0", dummyHash);
+            PacketAssembler.sealFromReview(stageDir, finalDir, "OP-999");
         }).toThrow("Tamper detected: File 01_Report/data.txt was modified after review staging.");
     });
 });

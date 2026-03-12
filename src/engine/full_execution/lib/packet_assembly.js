@@ -103,10 +103,23 @@ class PacketAssembler {
      * Stage 2: Final seal.
      * Ingests a previously staged review snapshot, verifies nothing was tampered with, and applies the final canonical manifest and hash seal.
      */
-    static sealFromReview(reviewStageDir, targetDeliveryDir, operatorId, templateVersion, templateHash, validityStatus = "valid_transmittable") {
-        if (!templateVersion || !templateHash) {
-            throw new Error("Controlled template version and hash are required for fail-closed sealing.");
+    static _deriveInterimTemplateAuthority() {
+        const templatePath = path.resolve(__dirname, "../../../..");
+        try {
+            const pkgBuffer = fs.readFileSync(path.join(templatePath, "package.json"));
+            const pkg = JSON.parse(pkgBuffer.toString("utf8"));
+            return {
+                templateVersion: pkg.version,
+                templateHash: crypto.createHash("sha256").update(pkgBuffer).digest("hex")
+            };
+        } catch (e) {
+            throw new Error("Could not resolve strict runtime template authority. Failing closed.");
         }
+    }
+
+    static sealFromReview(reviewStageDir, targetDeliveryDir, operatorId, validityStatus = "valid_transmittable") {
+        // Interim bounded proxy authority - extracted from library context, not user args
+        const { templateVersion, templateHash } = PacketAssembler._deriveInterimTemplateAuthority();
 
         const snapshotPath = path.join(reviewStageDir, "state_snapshot.json");
         if (!fs.existsSync(snapshotPath)) throw new Error("Missing state_snapshot.json. Cannot seal a packet that was not staged for review.");
@@ -169,8 +182,8 @@ class PacketAssembler {
     }
 
     // Kept for backward compat with test flows that just need a quick seal during mock generation without staging
-    seal(validityStatus = "valid_transmittable", controlledTemplateVersion, controlledTemplateHash) {
-        if (!controlledTemplateVersion || !controlledTemplateHash) throw new Error("Controlled template version and hash are required for fail-closed sealing.");
+    seal(validityStatus = "valid_transmittable") {
+        const { templateVersion: controlledTemplateVersion, templateHash: controlledTemplateHash } = PacketAssembler._deriveInterimTemplateAuthority();
         const manifestObj = {
             matter_id: this.matterId,
             packet_version: this.version,

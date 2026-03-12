@@ -49,7 +49,7 @@ try {
     } else if (isSeal) {
         console.log(`[FullExec] Stage 2: Ingesting review staging and building FINAL SEALED PACKET for ${matterId}`);
 
-        const sealResult = PacketAssembler.sealFromReview(reviewStageDir, finalDeliveryDir, operatorId, templateVersion, templateHash);
+        const sealResult = PacketAssembler.sealFromReview(reviewStageDir, finalDeliveryDir, operatorId);
         console.log(`[FullExec] Final seal applied successfully.`);
         console.log(`[FullExec] Canonical Packet Location: ${finalDeliveryDir}`);
         console.log(`[FullExec] Verified Seal Hash: ${sealResult.sealHash}`);
