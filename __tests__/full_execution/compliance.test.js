@@ -196,7 +196,7 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
 
         expect(() => {
             PacketAssembler.sealFromReview(stageDir, finalDir, "OP");
-        }).toThrow("Tamper detected: Alien file or directory introduced after review: 01_Report/alien_folder/");
+        }).toThrow(/^Tamper detected: Alien file or directory introduced after review: 01_Report\/alien_folder\/alien\.txt$/);
     });
 
     test("Layer 1/2/3: PacketAssembler seal rejects empty directory added after review", () => {
@@ -237,8 +237,15 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
     test("Layer 1/2/3: Real Execution Engine produces real artifact buffers", async () => {
         const FullExecutionEngine = require("../../src/engine/full_execution/lib/execution_engine");
 
-        // Execute against about:blank locally to ensure test isolation and no flaky external network deps
-        const output = await FullExecutionEngine.run("M-101", "about:blank");
+        let output;
+        try {
+            output = await FullExecutionEngine.run("M-101", "about:blank");
+        } catch (e) {
+            if (e.message.includes("Executable doesn't exist")) {
+                throw new Error("Integration test prerequisite missing: You must run 'npx playwright install chromium' before running this suite.");
+            }
+            throw e;
+        }
 
         expect(output.artifacts.length).toBe(4);
 

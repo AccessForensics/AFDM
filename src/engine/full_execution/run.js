@@ -12,16 +12,17 @@ const isSeal = args.includes("--seal-approved");
 const positional = args.filter(a => !a.startsWith("--"));
 
 if (!isStage && !isSeal) {
-    console.error("Usage: node src/engine/full_execution/run.js [--stage-review | --seal-approved] <matter_id> <operator_id>");
+    console.error("Usage: node src/engine/full_execution/run.js [--stage-review | --seal-approved] <matter_id> <operator_id> [target_url]");
     process.exit(1);
 }
 
 if (positional.length < 2) {
-    console.error("Missing required positional arguments. <matter_id> <operator_id>");
+    console.error("Missing required positional arguments. <matter_id> <operator_id> [target_url]");
     process.exit(1);
 }
 
-const [matterId, operatorId] = positional;
+const [matterId, operatorId, providedUrl] = positional;
+const targetUrl = providedUrl || "https://example.com";
 
 const reviewStageDir = path.join(process.cwd(), "tmp/full_exec_out", `${matterId}_review_stage`);
 const finalDeliveryDir = path.join(process.cwd(), "tmp/full_exec_out", `${matterId}_delivery_packet`);
@@ -36,8 +37,7 @@ const finalDeliveryDir = path.join(process.cwd(), "tmp/full_exec_out", `${matter
             const assembler = new PacketAssembler(reviewStageDir, matterId, operatorId);
             assembler.init();
 
-            const targetUrl = args[4] || "https://example.com"; // Accept a URL or default for smoke
-        const executionOutput = await FullExecutionEngine.run(matterId, targetUrl);
+            const executionOutput = await FullExecutionEngine.run(matterId, targetUrl);
 
             executionOutput.artifacts.forEach(artifact => {
                 assembler.writeRecord(artifact.section, artifact.filename, artifact.buffer, artifact.type);
