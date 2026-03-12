@@ -36,7 +36,8 @@ const finalDeliveryDir = path.join(process.cwd(), "tmp/full_exec_out", `${matter
             const assembler = new PacketAssembler(reviewStageDir, matterId, operatorId);
             assembler.init();
 
-            const executionOutput = await FullExecutionEngine.run(matterId);
+            const targetUrl = args[4] || "https://example.com"; // Accept a URL or default for smoke
+        const executionOutput = await FullExecutionEngine.run(matterId, targetUrl);
 
             executionOutput.artifacts.forEach(artifact => {
                 assembler.writeRecord(artifact.section, artifact.filename, artifact.buffer, artifact.type);

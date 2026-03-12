@@ -160,7 +160,7 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
 
         expect(() => {
             PacketAssembler.sealFromReview(stageDir, finalDir, "OP");
-        }).toThrow("Tamper detected: Missing file 01_Report/data.txt");
+        }).toThrow(/^Tamper detected: Missing file 01_Report\/data\.txt$/);
     });
 
     test("Layer 1/2/3: PacketAssembler seal rejects extra file added after review", () => {
@@ -177,7 +177,7 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
 
         expect(() => {
             PacketAssembler.sealFromReview(stageDir, finalDir, "OP");
-        }).toThrow("Tamper detected: Alien file or directory introduced after review: 01_Report/alien.txt");
+        }).toThrow(/^Tamper detected: Alien file or directory introduced after review: 01_Report\/alien\.txt$/);
     });
 
     test("Layer 1/2/3: PacketAssembler seal rejects extra directory added after review", () => {
@@ -214,7 +214,7 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
 
         expect(() => {
             PacketAssembler.sealFromReview(stageDir, finalDir, "OP");
-        }).toThrow("Tamper detected: Alien file or directory introduced after review: 01_Report/empty_folder/");
+        }).toThrow(/^Tamper detected: Alien file or directory introduced after review: 01_Report\/empty_folder\/$/);
     });
 
     test("Layer 1/2/3: PacketAssembler seal rejects renamed file after review", () => {
@@ -231,6 +231,31 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
 
         expect(() => {
             PacketAssembler.sealFromReview(stageDir, finalDir, "OP");
-        }).toThrow("Tamper detected: Alien file or directory introduced after review: 01_Report/renamed.txt");
+        }).toThrow(/^Tamper detected: Alien file or directory introduced after review: 01_Report\/renamed\.txt$/);
     });
+
+    test("Layer 1/2/3: Real Execution Engine produces real artifact buffers", async () => {
+        const FullExecutionEngine = require("../../src/engine/full_execution/lib/execution_engine");
+
+        // Execute against about:blank locally to ensure test isolation and no flaky external network deps
+        const output = await FullExecutionEngine.run("M-101", "about:blank");
+
+        expect(output.artifacts.length).toBe(4);
+
+        // desktop snapshot must be a real Buffer
+        const desktopImg = output.artifacts.find(a => a.section === "02_Exhibits/desktop_baseline");
+        expect(Buffer.isBuffer(desktopImg.buffer)).toBe(true);
+        expect(desktopImg.buffer.length).toBeGreaterThan(100); // Proves it's an actual byte array, not a mock string
+
+        // mobile snapshot must be a real Buffer
+        const mobileImg = output.artifacts.find(a => a.section === "02_Exhibits/mobile_baseline");
+        expect(Buffer.isBuffer(mobileImg.buffer)).toBe(true);
+
+        // findings JSON must contain real evaluated DOM logic
+        const findings = output.artifacts.find(a => a.filename === "accessibility_findings.json");
+        const parsedFindings = JSON.parse(findings.buffer);
+        expect(parsedFindings.evaluations[0].context).toBe("desktop_baseline");
+        expect(parsedFindings.evaluations[0].linkCount).toBeDefined(); // DOM evaluation property
+    }, 30000);
+
 });
