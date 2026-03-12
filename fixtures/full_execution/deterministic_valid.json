@@ -1,0 +1,11 @@
+{
+    "matter_id": "M-101",
+    "operator_id": "OP-999",
+    "independence_attestation": true,
+    "scope_delta": {
+        "authority_type": "ENGAGEMENT_ADDENDUM",
+        "authority_source_ref": "addendum_v2.pdf",
+        "delta_type": "ADDITIVE_URL",
+        "delta_description": "Added test url to scope", "authority_date_local": "2026-03-12T02:45:00Z", "authority_date_epoch_ms": 1773283500000
+    }
+}

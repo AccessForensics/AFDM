@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Packet Manifest Root Schema (Locked)",
   "description": "Section 15 + Appendix A4. additionalProperties: false. All root fields explicitly declared. New fields require PR, version bump, changelog. AUDIT NOTE: third_party_domains declared as unconstrained pending verification against thirdpartydomains.schema.json.",
