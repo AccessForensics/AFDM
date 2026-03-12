@@ -5,6 +5,14 @@ const assert = require('node:assert/strict');
 const { resolveTemplate } = require('../src/engine/intake/template_resolver.js');
 const { ENUMS } = require('../src/engine/intake/locked.js');
 
+test('Template Resolution: Ensure Enums exist before resolving', () => {
+  assert.ok(ENUMS.DETERMINATION_TEMPLATE.T1_DUAL, 'T1 enum missing');
+  assert.ok(ENUMS.DETERMINATION_TEMPLATE.T2_DESKTOP, 'T2 enum missing');
+  assert.ok(ENUMS.DETERMINATION_TEMPLATE.T4_NOT_ELIGIBLE, 'T4 enum missing');
+  assert.ok(ENUMS.DETERMINATION_TEMPLATE.T5_NOT_ELIGIBLE_CONSTRAINTS_BOT, 'T5 enum missing');
+  assert.ok(ENUMS.DETERMINATION_TEMPLATE.T6_NOT_ELIGIBLE_CONSTRAINTS_OTHER, 'T6 enum missing');
+});
+
 test('Template Resolution: T1_DUAL resolves to desktop/mobile eligible template', () => {
   const result = resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T1_DUAL);
   assert.ok(result.includes('ELIGIBLE FOR DESKTOP AND MOBILE TECHNICAL RECORD BUILD'), 'Missing expected T1 text');
@@ -22,16 +30,28 @@ test('Template Resolution: T4_NOT_ELIGIBLE resolves to not eligible template', (
   assert.ok(!result.includes('CONSTRAINTS'), 'Should not include constraints logic');
 });
 
-test('Template Resolution: T5 resolves to NOT_ELIGIBLE_CONSTRAINTS with BOTMITIGATION inserted', () => {
-  const result = resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T5_NOT_ELIGIBLE_CONSTRAINTS_BOTMITIGATION, 'BOTMITIGATION');
+test('Template Resolution: real T5 resolves to NOT_ELIGIBLE_CONSTRAINTS with BOTMITIGATION inserted', () => {
+  const result = resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T5_NOT_ELIGIBLE_CONSTRAINTS_BOT, 'BOTMITIGATION');
   assert.ok(result.includes('NOT ELIGIBLE FOR FORENSIC EXECUTION - CONSTRAINTS'), 'Missing expected T5 header');
   assert.ok(result.includes('CONSTRAINT CLASS: BOTMITIGATION'), 'Missing constraint class injection');
 });
 
-test('Template Resolution: T6 resolves to NOT_ELIGIBLE_CONSTRAINTS with alternate class inserted', () => {
+test('Template Resolution: real T6 resolves to NOT_ELIGIBLE_CONSTRAINTS with alternate class inserted', () => {
   const result = resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T6_NOT_ELIGIBLE_CONSTRAINTS_OTHER, 'AUTHWALL');
   assert.ok(result.includes('NOT ELIGIBLE FOR FORENSIC EXECUTION - CONSTRAINTS'), 'Missing expected T6 header');
   assert.ok(result.includes('CONSTRAINT CLASS: AUTHWALL'), 'Missing alternate constraint class injection');
+});
+
+test('Template Resolution: undefined category hard-fails', () => {
+  assert.throws(() => resolveTemplate(undefined), /category cannot be null or undefined/);
+});
+
+test('Template Resolution: null category hard-fails', () => {
+  assert.throws(() => resolveTemplate(null), /category cannot be null or undefined/);
+});
+
+test('Template Resolution: unknown category hard-fails', () => {
+  assert.throws(() => resolveTemplate('FAKE_CATEGORY'), /Unknown determination category/);
 });
 
 test('Template Resolution: T3_DESKTOP_MOBILE_CONSTRAINED hard-fails with required doctrine gap message', () => {

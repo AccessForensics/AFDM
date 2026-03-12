@@ -39,7 +39,7 @@ function pickConstraintsTemplate(runUnits) {
   const dt = ENUMS.DETERMINATION_TEMPLATE || {};
 
   if (isBot) {
-    return dt.T5_NOT_ELIGIBLE_CONSTRAINTS_BOTMITIGATION
+    return dt.T5_NOT_ELIGIBLE_CONSTRAINTS_BOT
         || dt.T5_NOT_ELIGIBLE_CONSTRAINTS
         || dt.T5_CONSTRAINTS;
   }
@@ -48,16 +48,6 @@ function pickConstraintsTemplate(runUnits) {
       || dt.T6_NOT_ELIGIBLE_CONSTRAINTS
       || dt.T6_CONSTRAINTS
       || dt.T5_NOT_ELIGIBLE_CONSTRAINTS_OTHER;
-}
-
-// Helper to extract constraint class for the template text placeholder
-function getFirstConstraintClass(runUnits) {
-  for (const ru of runUnits || []) {
-    if (ru && ru.outcome === OUTCOME_CONSTRAINED) {
-      return getConstraintClass(ru);
-    }
-  }
-  return null;
 }
 
 // Routes to locked external template headers only. No paraphrase permitted.
@@ -84,7 +74,17 @@ function computeDetermination(runUnits, mobileInScope) {
   if (anyConstrained) {
     const t = pickConstraintsTemplate(runUnits);
     if (!t) throw new Error("CANONICAL_ENUMS_MISSING_CONSTRAINTS_TEMPLATE");
-    return { category: t, note: null, constraintClass: getFirstConstraintClass(runUnits) };
+
+    // Extract the first constraint class to inject into the template
+    let constraintClass = null;
+    for (const ru of runUnits || []) {
+      if (ru && ru.outcome === OUTCOME_CONSTRAINED) {
+        constraintClass = getConstraintClass(ru);
+        break;
+      }
+    }
+
+    return { category: t, note: null, constraintClass };
   }
 
   return { category: ENUMS.DETERMINATION_TEMPLATE.T4_NOT_ELIGIBLE, note: null };

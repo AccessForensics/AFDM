@@ -9,6 +9,10 @@ const { ENUMS } = require('./locked.js');
  * T3_DESKTOP_MOBILE_CONSTRAINED has no approved template text and must not be synthesized.
  */
 function resolveTemplate(category, constraintClass = null, constraintBasis = null) {
+  if (category === undefined || category === null) {
+    throw new Error('Template resolution failed: category cannot be null or undefined.');
+  }
+
   const dt = ENUMS.DETERMINATION_TEMPLATE || {};
   const templatesDir = path.join(__dirname, 'templates');
 
@@ -28,7 +32,7 @@ function resolveTemplate(category, constraintClass = null, constraintBasis = nul
     return fs.readFileSync(path.join(templatesDir, 'NOT_ELIGIBLE.md'), 'utf8');
   }
 
-  if (category === dt.T5_NOT_ELIGIBLE_CONSTRAINTS_BOTMITIGATION || category === dt.T6_NOT_ELIGIBLE_CONSTRAINTS_OTHER) {
+  if (category === dt.T5_NOT_ELIGIBLE_CONSTRAINTS_BOT || category === dt.T6_NOT_ELIGIBLE_CONSTRAINTS_OTHER) {
     let tpl = fs.readFileSync(path.join(templatesDir, 'NOT_ELIGIBLE_CONSTRAINTS.md'), 'utf8');
     tpl = tpl.replace('{{CONSTRAINT_CLASS}}', constraintClass || 'UNKNOWN');
     tpl = tpl.replace('{{CONSTRAINT_BASIS}}', constraintBasis || 'Constraint encountered during baseline navigation');

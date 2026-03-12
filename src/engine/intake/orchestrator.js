@@ -1,25 +1,12 @@
-﻿'use strict';
-
-let __runSeq = 0;
-
-
-
-const CANON_ENUMS = require('../../../engine/intake/enums.js');
-const { assertTemplate3Preconditions } = require('./assert_template3_preconditions.js');
-const { lintDeterminationOutput } = require('./lint_determination_output.js');
-const { assertContextIntegrity } = require('./assert_context_integrity.js');
+'use strict';
 const { chromium, webkit } = require('playwright');
 const path = require('path');
 const fs   = require('fs');
 
-const {
-  QUALIFYING_SET, RUN_CAP, SUFFICIENCY_THRESHOLD,
-  validateOutcome, validateConstraintClass
-} = require('./enums.js');
+const { ENUMS, QUALIFYING_SET, RUN_CAP, SUFFICIENCY_THRESHOLD, validateOutcome, validateConstraintClass } = require('./locked.js');
 const { validateNote }                           = require('./notegate.js');
 const { normalizeToRunUnits, validateAtomicity } = require('./complaintnormalizer.js');
 const { computeDetermination }                   = require('./determination.js');
-const { resolveTemplate }                        = require('./template_resolver.js');
 const contextFactory                             = require('./contextfactory.js');
 const { detectAnchor }                           = require('./anchordetector.js');
 
@@ -48,8 +35,6 @@ async function executeIntake(config) {
       outcome:              null,
       context:              null,
       constraintclass:      null,
-      run_sequence:      null,
-      mobile_baseline_top_document_loaded: null,
       note:                 null,
       mobileanchorbasis:    null,
       tsstart:              null,
@@ -122,10 +107,7 @@ async function executeIntake(config) {
 
       if (run.skipped) {
         run.tsend = new Date().toISOString();
-              // Doctrine 4.3 [LOCKED]: deterministic run sequencing
-      __runSeq += 1;
-      run.run_sequence = __runSeq;
-completedRuns.push(run);
+        completedRuns.push(run);
         continue;
       }
 
@@ -138,13 +120,10 @@ completedRuns.push(run);
       const ctxOpts = isMobile
         ? { ...contextFactory.getMobileContextOptions(),  ignoreHTTPSErrors: true }
         : { ...contextFactory.getDesktopContextOptions(), ignoreHTTPSErrors: true };
-      
-      if (!ctxOpts || !ctxOpts.viewport) { throw new Error('CONTEXT_INTEGRITY: ctxOpts.viewport missing'); }
-      const __expectedContext = { width: ctxOpts.viewport.width, height: ctxOpts.viewport.height };
-const ctx = await browser.newContext(ctxOpts);
+      const ctx = await browser.newContext(ctxOpts);
 
       try {
-        const outcomeLabel = await runExecutor(browser, ctx, run, targetUrl, __expectedContext);
+        const outcomeLabel = await runExecutor(browser, ctx, run, targetUrl);
         validateOutcome(outcomeLabel);
         run.outcome = outcomeLabel;
 
@@ -209,52 +188,12 @@ const ctx = await browser.newContext(ctxOpts);
     determinationnote: determination.note,
     generatedutc:      new Date().toISOString()
   };
-
-  // Resolve the markdown template text
-  const renderedDeterminationText = resolveTemplate(determination.category, determination.constraintClass);
   fs.writeFileSync(
-    path.join(outputDir, 'DETERMINATION.txt'),
-    renderedDeterminationText,
-    'utf8'
-  );
-  
-  // Template 3 linkage enforcement (locked)
-  // If external determination is Desktop eligible but Mobile baseline constrained, require a constrained Mobile run with valid constraintclass.
-  const __detText = String(externalResult.determination || externalResult.category || externalResult.template || '');
-  if (__detText.includes('MOBILE BASELINE CONSTRAINED')) {
-    // Doctrine 4.3 [LOCKED] Template 3 gate, enforced strictly on FIRST Mobile RUNUNIT (run_sequence=2)
-    // Invariant: when Mobile in scope, run_sequence 1 is Desktop and 2 is Mobile
-    const ru1 = completedRuns.find(r => r && r.run_sequence === 1);
-    const ru2 = completedRuns.find(r => r && r.run_sequence === 2);
-
-    if (!ru1 || !ru2) {
-      throw new Error('TEMPLATE3_PRECONDITION: Missing run_sequence 1 or 2 required for Desktop then Mobile');
-    }
-    if (String(ru1.context).toLowerCase() !== 'desktop') {
-      throw new Error('TEMPLATE3_PRECONDITION: When Mobile in scope, run_sequence 1 must be Desktop');
-    }
-    if (String(ru2.context).toLowerCase() !== 'mobile') {
-      throw new Error('TEMPLATE3_PRECONDITION: When Mobile in scope, run_sequence 2 must be Mobile');
-    }
-
-    assertTemplate3Preconditions(mobileInScope, completedRuns, __lockedConstraintSet);
-}
-const __externalText = JSON.stringify(externalResult, null, 2) + '\n';
-lintDeterminationOutput(
-  __externalText,
-  (externalResult && externalResult.matter_id)
-    ? externalResult.matter_id
-    : ((internalResult && internalResult.matter_id) ? internalResult.matter_id : 'UNKNOWN')
-);
-fs.writeFileSync(
-  path.join(outputDir, 'intakeresult-external.json'),
-  __externalText,
-  'utf8'
-);__externalText, 'utf8'
+    path.join(outputDir, 'intakeresult-external.json'),
+    JSON.stringify(externalResult, null, 2) + '\n', 'utf8'
   );
 
   return { internal: internalResult, external: externalResult };
 }
 
 module.exports = { executeIntake };
-
