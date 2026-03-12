@@ -108,7 +108,6 @@ class PacketAssembler {
             const filepath = path.join(dir, file);
             const stat = fs.statSync(filepath);
             if (stat.isDirectory()) {
-                filelist.push(path.relative(rootDir, filepath).replace(/\\/g, '/') + '/');
                 filelist = PacketAssembler._walkSync(filepath, filelist, rootDir);
             } else {
                 filelist.push(path.relative(rootDir, filepath).replace(/\\/g, '/'));
