@@ -41,5 +41,3 @@ artifacts/
 # Backup/patch artifacts (do not track)
 *.bak*
 
-tmp/full_exec_out/
-tmp/delivery_out/
