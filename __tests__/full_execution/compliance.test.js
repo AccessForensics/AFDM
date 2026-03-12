@@ -225,4 +225,22 @@ describe("Full Execution (Sections 11-23) Compliance", () => {
 
         expect(initialHash).toBe(postReadHash);
     });
+
+    test("Layer 1/2/3: Viewer Generator explicitly rejects writing inside the canonical boundary", () => {
+        const { generateViewer } = require("../../src/engine/full_execution/viewer/generate_viewer");
+        const tmpDir = path.join(__dirname, "../../tmp/full_exec_out");
+        const packetDir = path.join(tmpDir, "M-101_boundary_test_packet");
+        const assembler = new PacketAssembler(packetDir, "M-101", "OP-999");
+        assembler.init();
+        assembler.writeRecord("01_Report", "evidence.txt", "Viewer test", "txt");
+        assembler.seal("valid_transmittable", "1.0.0", dummyHash);
+        assembler.generateVerificationOutputs();
+
+        // Attempting to output the viewer INSIDE the canonical Exhibits directory should fail instantly
+        const internalOutputDir = path.join(packetDir, "02_Exhibits");
+
+        expect(() => {
+            generateViewer(packetDir, internalOutputDir, "OP-ATTORNEY");
+        }).toThrow("Boundary violation: Viewer output directory cannot be inside the sealed canonical packet.");
+    });
 });
