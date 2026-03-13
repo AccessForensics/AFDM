@@ -75,7 +75,6 @@ function computeDetermination(runUnits, mobileInScope) {
     const t = pickConstraintsTemplate(runUnits);
     if (!t) throw new Error("CANONICAL_ENUMS_MISSING_CONSTRAINTS_TEMPLATE");
 
-    // Extract the first constraint class to inject into the template
     let constraintClass = null;
     for (const ru of runUnits || []) {
       if (ru && ru.outcome === OUTCOME_CONSTRAINED) {
