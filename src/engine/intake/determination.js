@@ -76,7 +76,7 @@ function computeDetermination(runUnits, mobileInScope) {
     if (!t) throw new Error("CANONICAL_ENUMS_MISSING_CONSTRAINTS_TEMPLATE");
 
     let constraintClass = null;
-    let constraintBasis = 'Constraint encountered during baseline navigation';
+    let constraintBasis = null;
     for (const ru of runUnits || []) {
       if (ru && ru.outcome === OUTCOME_CONSTRAINED) {
         constraintClass = getConstraintClass(ru);

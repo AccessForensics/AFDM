@@ -79,3 +79,37 @@ test('Template Resolution: T3_DESKTOP_MOBILE_CONSTRAINED hard-fails with require
     'T3 must throw the exact required error message'
   );
 });
+
+const { computeDetermination } = require('../src/engine/intake/determination.js');
+
+test('Determination Seam: constraintBasis is null if no real note exists, never fabricated', () => {
+  const mockRuns = [
+    {
+      context: 'desktop',
+      outcome: 'Constrained',
+      constraintclass: 'BOTMITIGATION'
+      // note is missing
+    }
+  ];
+
+  const result = computeDetermination(mockRuns, false);
+
+  assert.equal(result.constraintClass, 'BOTMITIGATION', 'Must extract constraint class');
+  assert.equal(result.constraintBasis, null, 'Must NOT fabricate a fallback constraint basis string');
+});
+
+test('Determination Seam: constraintBasis extracts governed note correctly', () => {
+  const mockRuns = [
+    {
+      context: 'desktop',
+      outcome: 'Constrained',
+      constraintclass: 'AUTHWALL',
+      note: 'Intercepted by login wall'
+    }
+  ];
+
+  const result = computeDetermination(mockRuns, false);
+
+  assert.equal(result.constraintClass, 'AUTHWALL', 'Must extract constraint class');
+  assert.equal(result.constraintBasis, 'Intercepted by login wall', 'Must extract real governed note');
+});
