@@ -10,7 +10,7 @@ tests_missing_or_partial: End-to-end integration tests for T3 generation cannot 
 fixtures_missing_or_partial: Fixture D.3 is missing and cannot be generated.
 expected_failure_mode: Hard fail on T3 resolution at execution time.
 blocks_completion: true
-planned_followup: Await canonical governed text for T3 to be added to AFIntakeTemplate.pdf, or await waiver allowing T2 fallback.
+planned_followup: Await canonical governed text for T3 to be added to AFIntakeTemplate.pdf.
 ---
 
 # Appendix F: Limitations and Doctrine Gaps

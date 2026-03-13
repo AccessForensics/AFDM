@@ -31,15 +31,33 @@ test('Template Resolution: T4_NOT_ELIGIBLE resolves to not eligible template', (
 });
 
 test('Template Resolution: real T5 resolves to NOT_ELIGIBLE_CONSTRAINTS with BOTMITIGATION inserted', () => {
-  const result = resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T5_NOT_ELIGIBLE_CONSTRAINTS_BOT, 'BOTMITIGATION');
+  const result = resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T5_NOT_ELIGIBLE_CONSTRAINTS_BOT, 'BOTMITIGATION', 'bot basis');
   assert.ok(result.includes('NOT ELIGIBLE FOR FORENSIC EXECUTION - CONSTRAINTS'), 'Missing expected T5 header');
   assert.ok(result.includes('CONSTRAINT CLASS: BOTMITIGATION'), 'Missing constraint class injection');
+  assert.ok(result.includes('PLAIN-LANGUAGE BASIS: bot basis'), 'Missing constraint basis injection');
 });
 
 test('Template Resolution: real T6 resolves to NOT_ELIGIBLE_CONSTRAINTS with alternate class inserted', () => {
-  const result = resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T6_NOT_ELIGIBLE_CONSTRAINTS_OTHER, 'AUTHWALL');
+  const result = resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T6_NOT_ELIGIBLE_CONSTRAINTS_OTHER, 'AUTHWALL', 'auth basis');
   assert.ok(result.includes('NOT ELIGIBLE FOR FORENSIC EXECUTION - CONSTRAINTS'), 'Missing expected T6 header');
   assert.ok(result.includes('CONSTRAINT CLASS: AUTHWALL'), 'Missing alternate constraint class injection');
+  assert.ok(result.includes('PLAIN-LANGUAGE BASIS: auth basis'), 'Missing constraint basis injection');
+});
+
+test('Template Resolution: T5 missing constraintClass hard-fails', () => {
+  assert.throws(
+    () => { resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T5_NOT_ELIGIBLE_CONSTRAINTS_BOT, null, 'some basis'); },
+    /constraintClass is required/,
+    'Must throw if constraintClass is missing'
+  );
+});
+
+test('Template Resolution: T6 missing constraintBasis hard-fails', () => {
+  assert.throws(
+    () => { resolveTemplate(ENUMS.DETERMINATION_TEMPLATE.T6_NOT_ELIGIBLE_CONSTRAINTS_OTHER, 'AUTHWALL', null); },
+    /constraintBasis is required/,
+    'Must throw if constraintBasis is missing'
+  );
 });
 
 test('Template Resolution: undefined category hard-fails', () => {

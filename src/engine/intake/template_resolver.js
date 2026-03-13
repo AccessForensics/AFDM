@@ -33,9 +33,16 @@ function resolveTemplate(category, constraintClass = null, constraintBasis = nul
   }
 
   if (category === dt.T5_NOT_ELIGIBLE_CONSTRAINTS_BOT || category === dt.T6_NOT_ELIGIBLE_CONSTRAINTS_OTHER) {
+    if (!constraintClass) {
+      throw new Error('Template resolution failed: constraintClass is required for T5/T6 constraints template.');
+    }
+    if (!constraintBasis) {
+      throw new Error('Template resolution failed: constraintBasis is required for T5/T6 constraints template.');
+    }
+
     let tpl = fs.readFileSync(path.join(templatesDir, 'NOT_ELIGIBLE_CONSTRAINTS.md'), 'utf8');
-    tpl = tpl.replace('{{CONSTRAINT_CLASS}}', constraintClass || 'UNKNOWN');
-    tpl = tpl.replace('{{CONSTRAINT_BASIS}}', constraintBasis || 'Constraint encountered during baseline navigation');
+    tpl = tpl.replace('{{CONSTRAINT_CLASS}}', constraintClass);
+    tpl = tpl.replace('{{CONSTRAINT_BASIS}}', constraintBasis);
     return tpl;
   }
 
