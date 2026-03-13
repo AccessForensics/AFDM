@@ -1,6 +1,5 @@
-doctrine_rule,code_file,function_or_module,status,notes
-"AFIntakeTemplate.pdf provides canonical body text for only 4 intake templates","src/engine/intake/template_resolver.js","resolveTemplate()","IMPLEMENTED","4 templates mapped directly to file reads."
-"AF 1-23 locks 6 permitted intake determinations, including Template 3","engine/intake/enums.js","DETERMINATION_TEMPLATE","IMPLEMENTED","6 enums defined including T3."
-"T3 missing canonical template must not be synthesized","src/engine/intake/template_resolver.js","resolveTemplate()","IMPLEMENTED","Hard throws on T3 request."
-"Completion cannot be claimed unless rules implemented or disclosed in App F","src/engine/intake/limitations_appendix_f.md","N/A","IMPLEMENTED","T3 gap formally disclosed with blocks_completion=true."
-"Fixture D.3 required for Template 3","delivery_artifacts/intake/fixture_inventory.md","N/A","BLOCKED","Documented as missing. Completion blocked."
+doctrine_rule,code_location,function_or_mechanism,status,notes
+"AFIntakeTemplate.pdf provides canonical body text for only 4 templates","src/engine/intake/template_resolver.js","resolveTemplate()","IMPLEMENTED","Mappings restrict to exactly 4 source files."
+"AF 1-23 locks 6 permitted external intake determinations","engine/intake/enums.js","DETERMINATION_TEMPLATE","IMPLEMENTED","6 enums defined, mapping implemented."
+"Template 3 is missing canonical body text","src/engine/intake/template_resolver.js","resolveTemplate()","IMPLEMENTED","T3 resolution triggers hard throw."
+"Fixture D.3 required for Template 3","delivery_artifacts/intake/fixture_inventory.md","N/A","BLOCKED","Documented in Appendix F, blocking completion."
