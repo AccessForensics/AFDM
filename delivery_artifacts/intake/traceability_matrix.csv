@@ -1,0 +1,10 @@
+doctrine_rule,requirement_id,code_location,function_or_mechanism,status,notes
+"AFIntakeTemplate.pdf provides canonical body text for only 4 templates","REQ-INTAKE-TPL-001","src/engine/intake/template_resolver.js","resolveTemplate()","IMPLEMENTED","Mappings strict to exactly ELIGIBLE_DESKTOP_MOBILE, ELIGIBLE_DESKTOP, NOT_ELIGIBLE, NOT_ELIGIBLE_CONSTRAINTS."
+"AF 1-23 locks 6 permitted external intake determinations","REQ-INTAKE-TPL-002","engine/intake/enums.js","DETERMINATION_TEMPLATE","IMPLEMENTED","6 enums defined, mapping implemented."
+"Template 3 is missing canonical body text and must not synthesize","REQ-INTAKE-TPL-003","src/engine/intake/template_resolver.js","resolveTemplate()","IMPLEMENTED","T3 resolution triggers hard throw."
+"Completion cannot be claimed unless rules implemented or disclosed in App F","REQ-INTAKE-APPF-001","src/engine/intake/limitations_appendix_f.md","N/A","IMPLEMENTED","T3 gap formally disclosed with all 12 required fields and blocks_completion=true."
+"Fixture D.3 required for Template 3","REQ-INTAKE-FIX-001","delivery_artifacts/intake/fixture_inventory.md","N/A","BLOCKED","Documented as missing. Completion blocked."
+"Undefined/Null/Unknown states must fail-closed","REQ-INTAKE-TPL-004","src/engine/intake/template_resolver.js","resolveTemplate()","IMPLEMENTED","Throws explicitly before mapping logic begins."
+"T5/T6 paths require constraintClass to be populated","REQ-INTAKE-TPL-005","src/engine/intake/template_resolver.js","resolveTemplate()","IMPLEMENTED","Throws if constraintClass is missing."
+"T5/T6 paths require constraintBasis to be populated","REQ-INTAKE-TPL-006","src/engine/intake/template_resolver.js","resolveTemplate()","IMPLEMENTED","Throws if constraintBasis is missing."
+"T5 uses canonical T5_NOT_ELIGIBLE_CONSTRAINTS_BOT enum","REQ-INTAKE-ENUM-001","src/engine/intake/determination.js","pickConstraintsTemplate()","IMPLEMENTED","Fixed typo, uses canonical enum."
