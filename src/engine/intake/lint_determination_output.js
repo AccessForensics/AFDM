@@ -1,50 +1,45 @@
-'use strict';
+"use strict";
 
-const BANNED_PHRASES = [
-  "extensive testing",
-  "limited testing",
-  "we checked everything",
-  "we checked only a few",
-  "thorough review",
-  "comprehensive",
-  "in-depth",
-  "we tested",
-  "we found",
-  "we confirmed",
-  "number of",
-  "several conditions",
-  "multiple issues",
-  "all conditions",
-  "no issues",
-  "pass",
-  "fail",
-  "compliant",
-  "non-compliant",
-  "violation",
-  "audit",
-  "certification",
-  "guarantee",
-  "likely",
-  "unlikely",
-  "probably",
-  "appears to",
-  "seems to",
-  "provisionally",
-  "strongly",
-  "weakly"
-];
+const fs = require("fs");
+const path = require("path");
+const { TEMPLATE_VALUES, BANNED_WORDS } = require("./enums.js");
 
-function lintDeterminationOutput(text, matterId) {
-  const safeText = (text ?? '').toString();
-  const lower = safeText.toLowerCase();
-  const mid = (matterId ?? 'UNKNOWN').toString();
+const LOCKED_TEMPLATE_SET = new Set(TEMPLATE_VALUES);
 
-  for (const phrase of BANNED_PHRASES) {
-    if (lower.includes(phrase.toLowerCase())) {
-      throw new Error(`NON_DISCLOSURE_LINT [${mid}]: Banned phrase detected in determination output: "${phrase}"`);
-    }
+function assertLockedDeterminationTemplate(template) {
+  if (!LOCKED_TEMPLATE_SET.has(template)) {
+    throw new Error(`INVALID_DETERMINATION_TEMPLATE: ${template}`);
   }
   return true;
 }
 
-module.exports = { BANNED_PHRASES, lintDeterminationOutput };
+function lintDeterminationOutput(text, matterId) {
+  const safeText = String(text || "");
+  const lower = safeText.toLowerCase();
+  const safeMatterId = String(matterId || "UNKNOWN");
+
+  for (const phrase of BANNED_WORDS) {
+    if (lower.includes(String(phrase).toLowerCase())) {
+      throw new Error(`NON_DISCLOSURE_LINT [${safeMatterId}]: banned phrase detected: ${phrase}`);
+    }
+  }
+
+  const match = safeText.match(/DETERMINATION:[^\r\n"]+/);
+  if (match) {
+    assertLockedDeterminationTemplate(match[0].trim());
+  }
+
+  return true;
+}
+
+function readCurrentTemplatesFile() {
+  const repoRoot = path.resolve(__dirname, "..", "..", "..");
+  const templatePath = path.join(repoRoot, "AFintaketemplates1-8.md");
+  return fs.readFileSync(templatePath, "utf8").replace(/^\uFEFF/, "");
+}
+
+module.exports = {
+  assertLockedDeterminationTemplate,
+  lintDeterminationOutput,
+  readCurrentTemplatesFile,
+};

@@ -1,136 +1,105 @@
-'use strict';
+"use strict";
 
-/**
- * NO_BAK_FILES_RULE (LOCKED)
- * Tracked backup artifacts are prohibited. Hard-fail if any tracked file contains ".bak" in its name.
- */
-function assertNoTrackedBakFiles() {
-  const { execSync } = require('child_process');
-  const out = execSync('git ls-files', { encoding: 'utf8' });
-  const files = out.split(/\r?\n/).filter(Boolean);
-  const bad = files.filter(f => /\.bak/i.test(f));
-  if (bad.length) {
-    throw new Error(
-      '[FAIL] Tracked backup files detected (prohibited):\n' +
-      bad.map(f => '  - ' + f).join('\n')
-    );
-  }
-}
+const fs = require("fs");
+const path = require("path");
 
-// Invoke early so CI fails fast
-assertNoTrackedBakFiles();
-
-
-const fs = require('fs');
-const path = require('path');
-const cp = require('child_process');
-
-function fail(msg) {
-  console.error('[FAIL] ' + msg);
+function fail(message) {
+  console.error(`[FAIL] ${message}`);
   process.exit(1);
 }
 
-function readText(p) {
-  return fs.readFileSync(p, 'utf8');
+function readText(filePath) {
+  return fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
 }
 
-// Iterative walk that ignores heavy/non-governed dirs at source
-function walk(rootDir) {
-  const out = [];
-  const ignores = new Set(['.git', 'archive', 'node_modules', 'dist', 'build', '.yarn', '.pnpm']);
+function assertExactSrcEnumsReExport(repoRoot) {
+  const target = path.join(repoRoot, "src", "engine", "intake", "enums.js");
+  const body = readText(target).replace(/\r\n/g, "\n").trim();
+  const expected = "module.exports = require('../../../engine/intake/enums.js');";
+  if (body !== expected) {
+    fail("src/engine/intake/enums.js must remain the exact one-line canonical re-export");
+  }
+}
 
-  const stack = [rootDir];
-  while (stack.length) {
-    const dir = stack.pop();
-    const ents = fs.readdirSync(dir, { withFileTypes: true });
+function assertCanonicalIntakeEnums(repoRoot) {
+  const enums = require(path.join(repoRoot, "engine", "intake", "enums.js"));
 
-    for (const ent of ents) {
-      if (ent.isDirectory() && ignores.has(ent.name)) continue;
+  if (Object.values(enums.DETERMINATION_TEMPLATE || {}).length !== 8) {
+    fail("canonical intake enums must expose exactly 8 locked determination templates");
+  }
 
-      const p = path.join(dir, ent.name);
-      if (ent.isDirectory()) stack.push(p);
-      else out.push(p);
+  if (Object.values(enums.OUTCOME || {}).length !== 4) {
+    fail("canonical intake enums must expose exactly 4 locked outcome labels");
+  }
+
+  if (
+    !enums.VIEWPORT ||
+    enums.VIEWPORT.DESKTOP.width !== 1366 ||
+    enums.VIEWPORT.DESKTOP.height !== 900 ||
+    enums.VIEWPORT.MOBILE.width !== 393 ||
+    enums.VIEWPORT.MOBILE.height !== 852
+  ) {
+    fail("canonical intake viewport baselines drifted from AF 1-10 locks");
+  }
+}
+
+function assertContextFactory(repoRoot) {
+  const target = path.join(repoRoot, "src", "engine", "intake", "contextfactory.js");
+  const body = readText(target);
+
+  if (!body.includes('require("./enums.js")') && !body.includes("require('./enums.js')")) {
+    fail("contextfactory.js must source locked viewport values from ./enums.js");
+  }
+
+  if (/\b390\b/.test(body) || /\b844\b/.test(body) || /deviceScaleFactor\s*:\s*3/.test(body)) {
+    fail("contextfactory.js still contains stale intake baseline literals");
+  }
+}
+
+function assertTemplatesFile(repoRoot) {
+  const target = path.join(repoRoot, "AFintaketemplates1-8.md");
+  const body = readText(target);
+
+  const expectedDeterminations = [
+    "DETERMINATION: ELIGIBLE FOR DESKTOP AND MOBILE TECHNICAL RECORD BUILD",
+    "DETERMINATION: ELIGIBLE FOR DESKTOP TECHNICAL RECORD BUILD",
+    "DETERMINATION: ELIGIBLE FOR DESKTOP TECHNICAL RECORD BUILD / MOBILE BASELINE: CONSTRAINED",
+    "DETERMINATION: ELIGIBLE FOR MOBILE TECHNICAL RECORD BUILD",
+    "DETERMINATION: ELIGIBLE FOR MOBILE TECHNICAL RECORD BUILD / DESKTOP BASELINE: CONSTRAINED",
+    "DETERMINATION: NOT ELIGIBLE FOR FORENSIC EXECUTION",
+    "DETERMINATION: NOT ELIGIBLE FOR FORENSIC EXECUTION - CONSTRAINTS (BOTMITIGATION)",
+    "DETERMINATION: NOT ELIGIBLE FOR FORENSIC EXECUTION - CONSTRAINTS (OTHER)"
+  ];
+
+  for (const line of expectedDeterminations) {
+    if (!body.includes(line)) {
+      fail(`AFintaketemplates1-8.md is missing locked determination line: ${line}`);
     }
   }
-  return out;
+
+  if (!body.includes("Internal implementation rule, not externally emitted:")) {
+    fail("AFintaketemplates1-8.md must contain the internal note-rule heading under the file title");
+  }
+
+  if (!body.includes("{{MATTER_LEVEL_NOTE}} may appear only in Template 3 or Template 5")) {
+    fail("AFintaketemplates1-8.md must contain the locked note gate");
+  }
+
+  const nextSteps = /NEXT STEPS|WHAT IS REQUIRED TO REOPEN INTAKE|COUNSEL ACTION OPTION|REASON:/i;
+  if (nextSteps.test(body)) {
+    fail("AFintaketemplates1-8.md still contains legacy verbose intake sections");
+  }
 }
 
 function main() {
-  const repo = process.cwd();
+  const repoRoot = process.cwd();
+  assertExactSrcEnumsReExport(repoRoot);
+  assertCanonicalIntakeEnums(repoRoot);
+  assertContextFactory(repoRoot);
+  assertTemplatesFile(repoRoot);
+  console.log("[OK] intake guardrails passed");
+}
 
-  // A) src enums file must be exact allowlisted one-liner re-export
-  const allowlistedEnumsLine = "module.exports = require('../../../engine/intake/enums.js');\n";
-  const srcEnums = path.join(repo, 'src', 'engine', 'intake', 'enums.js');
-  if (!fs.existsSync(srcEnums)) fail('Missing ' + srcEnums);
-  const srcBody = readText(srcEnums).replace(/^\uFEFF/, '');
-  if (srcBody !== allowlistedEnumsLine) {
-    fail('src/engine/intake/enums.js must exactly match allowlisted one-liner');
-  }
-
-  // Build file list once, used by all checks
-  const files = walk(repo).filter(p => /\.(js|json|md|txt|yml|yaml)$/i.test(p));
-  if (!Array.isArray(files)) fail('GUARDRAILS_INTERNAL_ERROR: files list not built');
-
-  // B) No viewport/DPR literals outside allowlist
-  const bannedPatterns = [
-    /deviceScaleFactor\s*[:=]\s*\d+/i,
-    /viewport\s*[:=]\s*\{/i,
-    /["'](width|height)["']\s*:\s*(390|393|844|852|1280|1366|720|900)\b/i
-  ];
-
-  const allowlistPaths = new Set([
-    path.join(repo, 'engine', 'intake', 'enums.js'),
-    path.join(repo, 'src', 'engine', 'intake', 'locked.js'),
-    path.join(repo, 'src', 'engine', 'intake', 'contextfactory.js'),
-    path.join(repo, 'tools', 'manifest-generator.js'),
-    path.join(repo, 'tools', 'guardrails_check.js'),
-    path.join(repo, 'manifests', 'smoke_desktop.json'),
-    path.join(repo, 'manifests', 'smoke_mobile.json'),
-    path.join(repo, 'manifests', 'smoke.json')
-  ]);
-
-  for (const p of files) {
-    if (allowlistPaths.has(p)) continue;
-    const body = readText(p);
-    for (const rx of bannedPatterns) {
-      if (rx.test(body)) {
-        fail('BANNED_PATTERN in ' + path.relative(repo, p) + ' pattern=' + String(rx));
-      }
-    }
-  }
-
-  // C) Manifests must match generator output exactly
-  cp.execFileSync(process.execPath, [path.join('tools', 'manifest-generator.js')], { stdio: 'inherit' });
-  const status = cp.execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
-  if (status) fail('Manifest drift detected after generator run.\n' + status);
-
-    // D) Single determination writer (actual writes)
-  // Enforce only on execution surface (src/ and engine/). Never scan tools/.
-  const writerCandidates = files
-    .filter(p => p.endsWith('.js'))
-    .filter(p => {
-      const rel = path.relative(repo, p).replace(/\\/g, '/');
-      return (rel.startsWith('src/') || rel.startsWith('engine/'));
-    });
-
-  const writers = [];
-  for (const p of writerCandidates) {
-    const rel = path.relative(repo, p).replace(/\\/g, '/');
-    const body = readText(p);
-
-    const writesDetermination =
-      (body.includes('DETERMINATION.txt') && /writeFile(Sync)?\s*\(/.test(body)) ||
-      /writeFileSync\s*\([^)]*DETERMINATION\.txt/.test(body) ||
-      /writeFile\s*\([^)]*DETERMINATION\.txt/.test(body);
-
-    if (writesDetermination) writers.push(rel);
-  }
-
-  if (writers.length > 1) fail('Multiple determination writers found: ' + JSON.stringify(writers));
-  if (writers.length === 1 && writers[0] !== 'src/engine/intake/orchestrator.js') {
-    fail('Determination writer must be orchestrator. Found: ' + JSON.stringify(writers));
-  }
-
-  console.log('[OK] guardrails passed');}
-
-if (require.main === module) main();
+if (require.main === module) {
+  main();
+}

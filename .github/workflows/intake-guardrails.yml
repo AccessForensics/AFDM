@@ -12,11 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
+
       - name: Install deps
         run: npm ci
+
+      - name: Intake doctrine tests
+        run: npx jest --runInBand --runTestsByPath tests/intake_1_10_doctrine_lock.test.js
+
       - name: Guardrails check
         run: node tools/guardrails_check.js
