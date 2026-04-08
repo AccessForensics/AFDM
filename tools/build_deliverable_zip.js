@@ -51,10 +51,6 @@ function writeUtf8NoBom(p, s) {
   fs.writeFileSync(p, s, { encoding: "utf8" });
 }
 
-function psQuote(s) {
-  return "'" + String(s).replace(/'/g, "''") + "'";
-}
-
 function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -665,8 +661,12 @@ function verifyZipEmbedsToolingBundleOrFail(caseRoot, caseId) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "af_zipcheck_"));
 
   try {
-    const psCmd = "Expand-Archive -LiteralPath " + psQuote(zipAbs) + " -DestinationPath " + psQuote(tmpDir) + " -Force";
-    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psCmd], { encoding: "utf8", cwd: repoRoot() });
+    const psCmd = "Expand-Archive -LiteralPath $env:AF_ZIP_ABS -DestinationPath $env:AF_TMP_DIR -Force";
+    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", psCmd], {
+      encoding: "utf8",
+      cwd: repoRoot(),
+      env: { ...process.env, AF_ZIP_ABS: zipAbs, AF_TMP_DIR: tmpDir },
+    });
 
     if (!r || r.status !== 0) {
       const t = spawnSync("tar", ["-xf", zipAbs, "-C", tmpDir], { encoding: "utf8", cwd: repoRoot() });
